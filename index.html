@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shisha Store Amadora — Shishas, Essências, Carvão e Acessórios</title>
+  <meta name="description" content="Shisha Store na Amadora (Venda Nova): shishas Amy Deluxe, Adalya, Wookah, Crystalia, essências Adalya, carvão de coco, Kaloud e acessórios ao melhor preço.">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" type="image/png" href="img/logo-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Archivo+Black&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- VERIFICAÇÃO DE IDADE -->
+  <div class="age-gate" id="ageGate" hidden>
+    <div class="age-card">
+      <div class="logo logo--dark" aria-hidden="true"></div>
+      <h2>Tens 18 anos ou mais?</h2>
+      <p>Este site contém produtos de tabaco destinados apenas a maiores de 18 anos.</p>
+      <div class="age-actions">
+        <button class="btn btn--ghost" id="ageNo">Não</button>
+        <button class="btn btn--dark" id="ageYes">Sim, tenho 18+</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BARRA SUPERIOR -->
+  <div class="topbar">
+    <div class="container topbar__inner">
+      <span class="topbar__center">Atendimento ao cliente: <a href="tel:+351910614646">910 614 646</a></span>
+      <nav class="topbar__links">
+        <a href="#/loja">Loja física</a>
+        <a href="#/loja">Contacto</a>
+      </nav>
+    </div>
+  </div>
+
+  <!-- CABEÇALHO: menu à esquerda · logo ao centro · ícones à direita -->
+  <header class="header" id="header">
+    <div class="container header__inner">
+      <button class="icon-btn header__burger" id="burger" aria-label="Abrir menu">
+        <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+
+      <nav class="nav" id="nav" aria-label="Categorias">
+        <a href="#/shishas" data-route="shishas">Shishas</a>
+        <a href="#/essencias" data-route="essencias">Essências</a>
+        <a href="#/carvao" data-route="carvao">Carvão</a>
+        <a href="#/acessorios" data-route="acessorios">Acessórios</a>
+        <div class="nav__more">
+          <button class="nav__more-btn">Mais <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+          <div class="nav__dropdown">
+            <a href="#/packs">Packs</a>
+            <a href="#/acessorios">Kaloud & cabeçotes</a>
+            <a href="#/acessorios">Boquilhas 3D</a>
+            <a href="#/loja">Loja física</a>
+          </div>
+        </div>
+      </nav>
+
+      <a href="#/" class="logo" aria-label="Shisha Store — início"></a>
+
+      <div class="header__icons">
+        <button class="icon-btn" id="searchBtn" aria-label="Pesquisar">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        </button>
+        <button class="icon-btn hide-sm" aria-label="Conta de cliente" id="accountBtn">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
+        </button>
+        <button class="icon-btn" aria-label="Favoritos" id="favBtn">
+          <svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
+          <span class="badge" id="favCount" hidden>0</span>
+        </button>
+        <button class="icon-btn" aria-label="Carrinho" id="cartBtn">
+          <svg viewBox="0 0 24 24"><path d="M6 7h12l-1 13H7L6 7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>
+          <span class="badge" id="cartCount" hidden>0</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- PESQUISA -->
+    <div class="searchbar" id="searchbar" hidden>
+      <div class="container">
+        <input type="search" id="searchInput" placeholder="Pesquisar shishas, sabores, carvão, Kaloud…" autocomplete="off">
+        <div class="search-results" id="searchResults"></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- MENU MÓVEL -->
+  <aside class="drawer drawer--left" id="mobileMenu" aria-hidden="true">
+    <div class="drawer__head">
+      <strong>Menu</strong>
+      <button class="icon-btn" data-close aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <nav class="mobile-nav">
+      <a href="#/">Início</a>
+      <a href="#/shishas">Shishas</a>
+      <a href="#/essencias">Essências</a>
+      <a href="#/carvao">Carvão</a>
+      <a href="#/acessorios">Acessórios</a>
+      <a href="#/packs">Packs</a>
+      <a href="#/loja">Loja física & contacto</a>
+    </nav>
+  </aside>
+
+  <!-- CARRINHO -->
+  <aside class="drawer drawer--right" id="cartDrawer" aria-hidden="true">
+    <div class="drawer__head">
+      <strong id="drawerTitle">O teu carrinho</strong>
+      <button class="icon-btn" data-close aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="drawer__body" id="drawerBody"></div>
+    <div class="drawer__foot" id="drawerFoot"></div>
+  </aside>
+  <div class="overlay" id="overlay"></div>
+
+  <main id="app"></main>
+
+  <!-- RODAPÉ -->
+  <footer class="footer">
+    <div class="container footer__grid">
+      <div>
+        <div class="logo logo--light" aria-hidden="true"></div>
+        <p class="footer__tag">Tabaco e todo o material necessário para os amantes de shisha, ao melhor preço do mercado.</p>
+        <p class="footer__small">Representante oficial Adalya em Portugal.</p>
+      </div>
+      <div>
+        <h4>Loja</h4>
+        <a href="#/shishas">Shishas</a>
+        <a href="#/essencias">Essências</a>
+        <a href="#/carvao">Carvão</a>
+        <a href="#/acessorios">Acessórios</a>
+        <a href="#/packs">Packs</a>
+      </div>
+      <div>
+        <h4>Visita-nos</h4>
+        <p>Rua João Hogan, nº 6<br>Venda Nova, Amadora</p>
+        <p>Seg–Sáb 10h–12h · 14h–20h<br>Dom 14h–20h</p>
+      </div>
+      <div>
+        <h4>Contacto</h4>
+        <a href="tel:+351910614646">910 614 646</a>
+        <a href="https://wa.me/351910614646" target="_blank" rel="noopener">WhatsApp</a>
+        <a href="https://www.instagram.com/shishaamadoraa/" target="_blank" rel="noopener">Instagram</a>
+      </div>
+    </div>
+    <div class="container footer__bottom">
+      <span>© <span id="year"></span> Shisha Store Amadora</span>
+      <span>Fotos de ambiente: Unsplash</span>
+      <span>Venda proibida a menores de 18 anos. Fumar prejudica gravemente a sua saúde e a dos que o rodeiam.</span>
+    </div>
+  </footer>
+
+  <a class="wa-float" href="https://wa.me/351910614646" target="_blank" rel="noopener" aria-label="Falar no WhatsApp">
+    <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-7.7 13.6L3 21l4.5-1.2A9 9 0 1 0 12 3z"/><path d="M8.5 9.5c.3 2.3 2.7 4.8 5 5.2l1.2-1.2 2 1-.5 1.5c-3.5.5-8.6-4.3-8.2-8l1.5-.5 1 2-1 1z" fill="currentColor" stroke="none"/></svg>
+  </a>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- Aviso de demonstração (remover quando a loja for oficial) -->
+  <div class="demo-badge" role="note">Demonstração · Proposta de loja online</div>
+
+  <script src="js/data.js"></script>
+  <script src="js/art.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
