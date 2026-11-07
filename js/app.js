@@ -597,7 +597,8 @@
   window.addEventListener("hashchange", render);
 
   /* ---------- Verificação de idade (18+) ---------- */
-  if (!store.get("ss_age", false)) {
+  // ?captura salta a verificação (só para gerar capturas de ecrã da proposta)
+  if (!store.get("ss_age", false) && !location.search.includes("captura")) {
     const g = $("#ageGate"); g.hidden = false; document.body.style.overflow = "hidden";
     $("#ageYes").onclick = () => { store.set("ss_age", true); g.hidden = true; document.body.style.overflow = ""; };
     $("#ageNo").onclick = () => { $(".age-card p").textContent = "Lamentamos, o acesso é exclusivo a maiores de 18 anos."; $(".age-actions").remove(); };
