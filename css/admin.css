@@ -267,6 +267,30 @@ table.t { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .adv summary { cursor: pointer; font-weight: 600; font-size: 13px; color: var(--ink-2); }
 .toast__undo { margin-left: 10px; color: var(--goldl); font-weight: 700; text-decoration: underline; }
 
+/* ---------- Navegação no telemóvel ---------- */
+.tabbar { display: none; }
+.top__burger { display: none; align-items: center; gap: 8px; padding: 9px 14px 9px 11px; border-radius: 12px; background: var(--ink); color: #fff; font-weight: 700; font-size: 14px; flex: none; box-shadow: 0 4px 12px rgba(0,0,0,.18); }
+.top__burger svg { width: 22px; height: 22px; stroke-width: 2.2; }
+@media (max-width: 960px) {
+  .top__burger { display: inline-flex; }
+  .top { flex-wrap: wrap; row-gap: 10px; }
+  .top > div:not(.top__right) { min-width: 0; flex: 1; }
+  .top h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .top__right { width: 100%; margin-left: 0; }
+  .top__right:empty { display: none; }
+  .top__right .btn { flex: 1; padding: 11px 12px; font-size: 14px; }
+  .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; background: #fff; border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 20px rgba(0,0,0,.06); }
+  .tabbar a, .tabbar button { position: relative; display: grid; justify-items: center; gap: 3px; padding: 6px 2px; border-radius: 12px; font-size: 11px; font-weight: 600; color: var(--muted); }
+  .tabbar svg { width: 24px; height: 24px; }
+  .tabbar a.is-active { color: var(--ink); }
+  .tabbar a.is-active svg { color: var(--gold-2); stroke-width: 2.2; }
+  .tabbar a.is-active::before { content: ""; position: absolute; top: -6px; left: 30%; right: 30%; height: 3px; border-radius: 0 0 3px 3px; background: var(--gold); }
+  .tabbar__badge { position: absolute; top: 2px; left: calc(50% + 6px); background: var(--red); color: #fff; font-size: 10.5px; font-weight: 800; min-width: 18px; height: 18px; border-radius: 9px; display: grid; place-items: center; padding: 0 5px; }
+  #view { padding-bottom: 96px; }
+  .toast { bottom: 90px; }
+  .panel { z-index: 80; }
+}
+
 /* ---------- Packs ---------- */
 .packs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 .pack-card { overflow: hidden; display: flex; flex-direction: column; }

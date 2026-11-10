@@ -113,6 +113,7 @@
     (views[r] || views.painel)();
     const n = orders.filter(o => o.estado === "nova").length;
     $("#newOrders").textContent = n; $("#newOrders").hidden = !n;
+    $("#newOrders2").textContent = n; $("#newOrders2").hidden = !n;
     window.scrollTo(0, 0);
   }
   window.addEventListener("hashchange", () => { closePanel(); render(); });
@@ -290,7 +291,7 @@
     drawEditor();
     $("#panel").classList.add("is-open"); $("#panel").setAttribute("aria-hidden", "false"); $("#overlay").classList.add("is-on");
   }
-  function closePanel() { $("#panel").classList.remove("is-open"); $("#panel").setAttribute("aria-hidden", "true"); $("#overlay").classList.remove("is-on"); editing = null; }
+  function closePanel() { $("#side").classList.remove("is-open"); $("#panel").classList.remove("is-open"); $("#panel").setAttribute("aria-hidden", "true"); $("#overlay").classList.remove("is-on"); editing = null; }
 
   function drawEditor() {
     const { cat, p, i } = editing;
@@ -766,7 +767,7 @@ const PACKS = ${J(db.packs)};
       return;
     }
     if (t.id === "saveProd") return saveProduct();
-    if (t.id === "burger") return $("#side").classList.toggle("is-open");
+    if (t.id === "burger" || t.id === "burger2") { const open = $("#side").classList.toggle("is-open"); $("#overlay").classList.toggle("is-on", open); return; }
   });
   // interruptores rápidos na tabela
   document.addEventListener("change", (e) => {
