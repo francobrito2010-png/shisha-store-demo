@@ -233,6 +233,7 @@
           ${p.destaque ? `<span class="tag">Mais completo</span>` : ""}
           <h3>${p.nome}</h3>
           <ul>${p.inclui.map(i => `<li>${i}</li>`).join("")}</ul>
+          ${p.valor && p.preco != null && p.valor > p.preco ? `<div class="pack__save"><s>${eur(p.valor)}</s><span>Poupas ${eur(p.valor - p.preco)}</span></div>` : ""}
           <div class="pack__foot"><span class="pack__price">${eur(p.preco)}</span>${p.esgotado ? `<button class="btn btn--ghost" disabled>Esgotado</button>` : `<button class="btn btn--dark" data-add="${p.id}">Adicionar</button>`}</div>
         </div>
       </article>`).join("")}</div>`;

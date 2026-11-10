@@ -242,9 +242,9 @@
         <td data-label="Destaque"><label class="switch switch--gold"><input type="checkbox" data-toggle="destaque" data-id="${p.id}" ${p.destaque || p.top ? "checked" : ""}><i></i></label></td>
         <td data-label="Na loja"><label class="switch"><input type="checkbox" data-toggle="visivel" data-id="${p.id}" ${p.oculto ? "" : "checked"}><i></i>${p.oculto ? "Escondido" : ""}</label></td>
         <td class="td-act"><div class="actions">
-          <button class="icon-btn" title="Editar" data-edit="${p.id}">${I.edit}</button>
-          <button class="icon-btn" title="Duplicar" data-dup="${p.id}">${I.copy}</button>
-          <button class="icon-btn" title="Apagar" data-del="${p.id}" style="color:var(--red)">${I.trash}</button>
+          <button class="act" data-edit="${p.id}">${I.edit}<span>Editar</span></button>
+          <button class="act" data-dup="${p.id}" title="Criar uma cópia para um produto parecido">${I.copy}<span>Duplicar</span></button>
+          <button class="act act--del" data-del="${p.id}">${I.trash}<span>Apagar</span></button>
         </div></td>
       </tr>`).join("") : `<tr><td colspan="7"><div class="empty">Nenhum produto encontrado.</div></td></tr>`;
   }
@@ -282,6 +282,7 @@
   function openEditor(id, dup = false) {
     const f = id ? findProduct(id) : null;
     const cat = f ? f.cat : (state.cat !== "todos" ? state.cat : "shishas");
+    if (cat === "packs") return openPackEditor(id, dup);
     const p = f ? clone(f.p) : { marca: "", cor: "#b08d57" };
     if (dup) { p.id = ""; if (p.nome) p.nome += " (cópia)"; if (p.sabor) p.sabor += " (cópia)"; }
     editing = { cat, i: f && !dup ? f.i : -1, p, img: imgOf(p) };
@@ -349,7 +350,10 @@
       <button class="btn btn--ghost" data-close>Cancelar</button>
       <button class="btn btn--dark" id="saveProd">${I.check} Guardar</button>`;
 
-    $$("[data-pick-cat]").forEach(b => b.addEventListener("click", () => { readForm(); editing.cat = b.dataset.pickCat; drawEditor(); }));
+    $$("[data-pick-cat]").forEach(b => b.addEventListener("click", () => {
+      if (b.dataset.pickCat === "packs") return openPackEditor();
+      readForm(); editing.cat = b.dataset.pickCat; drawEditor();
+    }));
     $("#f_file").addEventListener("change", async (e) => {
       const file = e.target.files[0]; if (!file) return;
       readForm(); editing.img = await compress(file); editing.p.img = editing.img; delete editing.p.semFoto;
@@ -419,6 +423,148 @@
         res(c.toDataURL("image/jpeg", .8)); }; im.src = r.result; };
       r.readAsDataURL(file);
     });
+  }
+
+  /* ---------- PACKS ---------- */
+  const packValue = (pk) => (pk.itens || []).reduce((s, it) => { const f = findProduct(it.id); return s + (f ? (it.size && f.p.precos ? f.p.precos[it.size] || 0 : priceOf(f.p) || 0) * (it.qty || 1) : 0); }, 0);
+  views.packs = () => {
+    setHeader("Packs", "Junta vários produtos num pack com desconto. Os clientes adoram!", `<button class="btn btn--dark" data-pack-new>${I.plus} Criar pack</button>`);
+    $("#view").innerHTML = db.packs.length ? `
+      <div class="packs-grid">${db.packs.map(pk => {
+        const val = packValue(pk), save = val && pk.preco != null ? val - pk.preco : 0;
+        return `<div class="card pack-card ${pk.oculto ? "is-hidden" : ""}">
+          <div class="pack-card__img">${imgOf(pk) ? thumb(pk, "pack-card__photo") : `<span class="pack-card__photo" style="background:${esc(pk.cor || "#b08d57")}">📦</span>`}${pk.destaque ? `<span class="pill st-confirmada" style="position:absolute;top:10px;left:10px">⭐ Destaque</span>` : ""}${pk.esgotado ? `<span class="pill st-esgotado" style="position:absolute;top:10px;right:10px">Esgotado</span>` : ""}</div>
+          <div class="pack-card__body">
+            <h3>${esc(pk.nome)}</h3>
+            <div class="pack-card__price">${pk.preco == null ? "Sob consulta" : eur(pk.preco)}${save > 0 ? `<span class="pack-save">Poupa ${eur(save)}</span>` : ""}</div>
+            <ul>${(pk.inclui || []).slice(0, 6).map(i => `<li>${esc(i)}</li>`).join("")}${(pk.inclui || []).length > 6 ? `<li class="muted">+ ${pk.inclui.length - 6} mais</li>` : ""}</ul>
+            <div class="actions" style="justify-content:flex-start">
+              <button class="act" data-edit="${pk.id}">${I.edit}<span>Editar</span></button>
+              <button class="act" data-dup="${pk.id}">${I.copy}<span>Duplicar</span></button>
+              <button class="act act--del" data-del="${pk.id}">${I.trash}<span>Apagar</span></button>
+            </div>
+          </div>
+        </div>`; }).join("")}
+        <button class="card pack-card pack-card--new" data-pack-new><span>${I.plus}</span><b>Criar novo pack</b><small>Escolhe os produtos e o preço</small></button>
+      </div>`
+      : `<div class="card empty">Ainda não tens packs.<br><button class="btn btn--dark btn--sm" data-pack-new>${I.plus} Criar o primeiro pack</button></div>`;
+  };
+
+  function openPackEditor(id, dup = false) {
+    const f = id ? findProduct(id) : null;
+    const pk = f ? clone(f.p) : { nome: "", preco: null, inclui: [], itens: [], cor: "#b08d57" };
+    if (dup) { pk.id = ""; pk.nome += " (cópia)"; }
+    // packs antigos só têm texto: ficam como "outros itens"
+    if (!pk.itens) { pk.itens = []; pk.extras = [...(pk.inclui || [])]; }
+    if (!pk.extras) pk.extras = [];
+    editing = { cat: "packs", i: f && !dup ? f.i : -1, p: pk, img: imgOf(pk), pack: true, q: "", precoManual: pk.preco != null };
+    $("#panelTitle").textContent = f && !dup ? "Editar pack" : "Criar pack";
+    drawPackEditor();
+    $("#panel").classList.add("is-open"); $("#panel").setAttribute("aria-hidden", "false"); $("#overlay").classList.add("is-on");
+  }
+
+  function drawPackEditor() {
+    const pk = editing.p, isNew = editing.i === -1;
+    $("#panelBody").innerHTML = `
+      <form class="form" id="packForm" onsubmit="return false">
+        <div class="section-title">${isNew ? "1. " : ""}Nome e foto</div>
+        <div class="field"><label for="pk_nome">Nome do pack</label><input id="pk_nome" value="${esc(pk.nome)}" placeholder="Ex.: Pack Verão, Pack Iniciante…"></div>
+        <div class="photo">
+          <div class="photo__prev" style="background:${esc(pk.cor || "#999")}">${editing.img ? `<img src="${esc(editing.img)}" alt="">` : "📦"}</div>
+          <div class="photo__btns">
+            <label class="btn btn--dark btn--sm" style="cursor:pointer">📷 ${editing.img ? "Trocar foto" : "Tirar ou escolher foto"}<input type="file" accept="image/*" id="pk_file" hidden></label>
+            ${editing.img ? `<button type="button" class="btn btn--sm btn--ghost" id="pk_rm">${I.trash} Remover foto</button>` : `<small class="muted">Uma foto com tudo junto vende melhor.</small>`}
+          </div>
+        </div>
+
+        <div class="section-title">${isNew ? "2. " : ""}O que leva o pack?</div>
+        <div class="pk-chosen" id="pkChosen"></div>
+        <label class="search">${I.search}<input id="pk_q" type="search" placeholder="Procurar produto para juntar…" value="${esc(editing.q)}"></label>
+        <div class="pk-list" id="pkList"></div>
+        <div class="field"><label for="pk_extras">Outros itens (um por linha)</label><textarea id="pk_extras" placeholder="Ex.: 100g de sabor à escolha&#10;Boquilha 3D">${esc(pk.extras.join("\n"))}</textarea><small>Para coisas que não estão no catálogo ou que o cliente escolhe na loja.</small></div>
+
+        <div class="section-title">${isNew ? "3. " : ""}Preço do pack</div>
+        <div class="pk-sum" id="pkSum"></div>
+
+        <div class="section-title">${isNew ? "4. " : ""}Na loja</div>
+        <div class="toggles">
+          <label class="switch"><input type="checkbox" id="pk_stock" ${pk.esgotado ? "" : "checked"}><i></i><span><b>Disponível</b><small>Desliga quando esgotar</small></span></label>
+          <label class="switch"><input type="checkbox" id="pk_vis" ${pk.oculto ? "" : "checked"}><i></i><span><b>Mostrar na loja</b><small>Desliga para esconder</small></span></label>
+          <label class="switch switch--gold"><input type="checkbox" id="pk_dest" ${pk.destaque ? "checked" : ""}><i></i><span><b>Destacar</b><small>Etiqueta "Mais completo"</small></span></label>
+        </div>
+      </form>`;
+    $("#panelFoot").innerHTML = `
+      ${isNew ? "" : `<button class="btn btn--danger spacer" data-del="${pk.id}">${I.trash} Apagar</button>`}
+      <button class="btn btn--ghost" data-close>Cancelar</button>
+      <button class="btn btn--dark" id="savePack">${I.check} Guardar pack</button>`;
+    drawPackChosen(); drawPackList(); drawPackSum();
+
+    $("#pk_q").addEventListener("input", (e) => { editing.q = e.target.value; drawPackList(); });
+    $("#pk_nome").addEventListener("input", (e) => { pk.nome = e.target.value; });
+    $("#pk_extras").addEventListener("input", (e) => { pk.extras = e.target.value.split("\n").map(s => s.trim()).filter(Boolean); });
+    $("#pk_file").addEventListener("change", async (e) => { const file = e.target.files[0]; if (!file) return; editing.img = await compress(file); pk.img = editing.img; delete pk.semFoto; drawPackEditor(); });
+    $("#pk_rm")?.addEventListener("click", () => { delete pk.img; editing.img = null; pk.semFoto = true; drawPackEditor(); });
+  }
+  function drawPackChosen() {
+    const pk = editing.p;
+    $("#pkChosen").innerHTML = pk.itens.length ? pk.itens.map((it, idx) => {
+      const f = findProduct(it.id); if (!f) return "";
+      const sizes = f.p.precos ? Object.keys(f.p.precos) : null;
+      return `<div class="pk-item">${thumb(f.p)}<div class="list__main"><strong>${esc(nameOf(f.p))}</strong><span>${eur(sizes ? f.p.precos[it.size] : priceOf(f.p))}</span></div>
+        ${sizes ? `<select class="select" data-pk-size="${idx}">${sizes.map(s => `<option ${s === it.size ? "selected" : ""}>${s}</option>`).join("")}</select>` : ""}
+        <div class="qty"><button type="button" data-pk-qty="${idx}" data-d="-1">−</button><span>${it.qty || 1}</span><button type="button" data-pk-qty="${idx}" data-d="1">+</button></div>
+        <button type="button" class="icon-btn" data-pk-rm="${idx}" title="Tirar do pack" style="color:var(--red)">${I.trash}</button></div>`;
+    }).join("") : `<p class="muted" style="margin:0;font-size:13px">Ainda não escolheste produtos. Procura em baixo e toca em <b>Juntar</b>.</p>`;
+  }
+  function drawPackList() {
+    const q = editing.q.trim().toLowerCase(), chosen = new Set(editing.p.itens.map(i => i.id));
+    let list = allProducts().filter(({ cat }) => cat !== "packs");
+    if (q) list = list.filter(({ p }) => `${nameOf(p)} ${p.marca || ""}`.toLowerCase().includes(q));
+    $("#pkList").innerHTML = list.slice(0, q ? 30 : 8).map(({ p, cat }) => `
+      <div class="pk-row">${thumb(p)}<div class="list__main"><strong>${esc(nameOf(p))}</strong><span>${CATS[cat].label} · ${p.precos ? eur(Object.values(p.precos)[0]) : priceOf(p) == null ? "Sob consulta" : eur(priceOf(p))}</span></div>
+        ${chosen.has(p.id) ? `<span class="pill st-entregue">No pack</span>` : `<button type="button" class="act" data-pk-add="${p.id}">${I.plus}<span>Juntar</span></button>`}</div>`).join("")
+      + (!q ? `<p class="muted" style="font-size:12px;margin:6px 0 0">A mostrar 8 produtos. Escreve para procurar os outros.</p>` : "");
+  }
+  function drawPackSum() {
+    const pk = editing.p, val = packValue(pk);
+    const save = val && pk.preco != null ? val - pk.preco : 0;
+    $("#pkSum").innerHTML = `
+      <div class="pk-sum__row"><span>Valor dos produtos em separado</span><b>${eur(val)}</b></div>
+      <div class="pk-sum__row pk-sum__price"><label for="pk_preco">Preço do pack</label><div class="prefix"><input id="pk_preco" type="number" step="0.01" min="0" value="${pk.preco ?? ""}" placeholder="0,00"><span>€</span></div></div>
+      ${val ? `<div class="pk-sum__row pk-sum__save ${save > 0 ? "is-good" : save < 0 ? "is-bad" : ""}"><span>${save > 0 ? "🎉 O cliente poupa" : save < 0 ? "⚠️ O pack está mais caro do que em separado" : "Sem desconto"}</span><b>${save > 0 ? `${eur(save)} (${Math.round(save / val * 100)}%)` : save < 0 ? eur(-save) : ""}</b></div>
+      <div class="pk-sum__hint">Sugestão: ${[10, 15, 20].map(d => `<button type="button" class="chip-s" data-pk-sug="${Math.floor(val * (1 - d / 100))}">${d}% desc. → ${eur(Math.floor(val * (1 - d / 100)))}</button>`).join("")}</div>` : `<p class="muted" style="font-size:12.5px;margin:0">Junta produtos para ver quanto o cliente poupa.</p>`}`;
+    const inp = $("#pk_preco");
+    inp.addEventListener("input", () => { const v = inp.value.trim(); pk.preco = v === "" ? null : Math.round(parseFloat(v) * 100) / 100; editing.precoManual = true; refreshSave(); });
+  }
+  // enquanto o dono não escrever um preço, sugere 10% de desconto automaticamente
+  function autoPackPrice() {
+    if (editing.precoManual) return;
+    const v = packValue(editing.p); editing.p.preco = v ? Math.floor(v * 0.9) : null;
+  }
+  // atualiza só a linha da poupança (para não perder o foco ao escrever o preço)
+  function refreshSave() {
+    const pk = editing.p, val = packValue(pk), save = val && pk.preco != null ? val - pk.preco : 0, el = $(".pk-sum__save");
+    if (!el) return;
+    el.className = `pk-sum__row pk-sum__save ${save > 0 ? "is-good" : save < 0 ? "is-bad" : ""}`;
+    el.innerHTML = `<span>${save > 0 ? "🎉 O cliente poupa" : save < 0 ? "⚠️ O pack está mais caro do que em separado" : "Sem desconto"}</span><b>${save > 0 ? `${eur(save)} (${Math.round(save / val * 100)}%)` : save < 0 ? eur(-save) : ""}</b>`;
+  }
+
+  function savePack() {
+    const pk = editing.p;
+    pk.nome = ($("#pk_nome").value || "").trim();
+    if (!pk.nome) { $("#pk_nome").closest(".field").classList.add("field--err"); $("#pk_nome").focus(); return toast("Dá um nome ao pack", true); }
+    if (!pk.itens.length && !pk.extras.length) return toast("Junta pelo menos um produto ao pack", true);
+    const flag = (k, on) => { if (on) pk[k] = true; else delete pk[k]; };
+    flag("esgotado", !$("#pk_stock").checked); flag("oculto", !$("#pk_vis").checked); flag("destaque", $("#pk_dest").checked);
+    pk.inclui = [...pk.itens.map(it => { const f = findProduct(it.id); return f ? `${(it.qty || 1) > 1 ? it.qty + "× " : ""}${nameOf(f.p)}${it.size ? " " + it.size : ""}` : null; }).filter(Boolean), ...pk.extras];
+    const val = packValue(pk); if (val) pk.valor = Math.round(val * 100) / 100; else delete pk.valor;
+    if (!pk.img) delete pk.img;
+    if (editing.i === -1) {
+      const s = slug(pk.nome); let id = s.startsWith("pack") ? s : "pack-" + s; while (findProduct(id)) id += "-2";
+      pk.id = id; db.packs.unshift(pk);
+    } else db.packs[findProduct(pk.id).i] = pk;
+    save(editing.i === -1 ? "Pack criado" : "Pack atualizado");
+    closePanel(); render();
   }
 
   /* ---------- ENCOMENDAS ---------- */
@@ -583,6 +729,16 @@ const PACKS = ${J(db.packs)};
     if (t.dataset.edit && !t.closest("[data-toggle]")) return openEditor(t.dataset.edit);
     if (t.dataset.dup) return openEditor(t.dataset.dup, true);
     if (t.dataset.price) return editPrice(t);
+    if (t.matches("[data-pack-new]")) return openPackEditor();
+    if (t.id === "savePack") return savePack();
+    if (t.dataset.pkAdd) {
+      const f = findProduct(t.dataset.pkAdd);
+      editing.p.itens.push({ id: t.dataset.pkAdd, qty: 1, ...(f.p.precos ? { size: Object.keys(f.p.precos)[0] } : {}) });
+      autoPackPrice(); drawPackChosen(); drawPackList(); drawPackSum(); toast(`${nameOf(f.p)} juntado ao pack`); return;
+    }
+    if (t.dataset.pkRm != null) { editing.p.itens.splice(+t.dataset.pkRm, 1); autoPackPrice(); drawPackChosen(); drawPackList(); drawPackSum(); return; }
+    if (t.dataset.pkQty != null) { const it = editing.p.itens[+t.dataset.pkQty]; it.qty = Math.max(1, (it.qty || 1) + +t.dataset.d); autoPackPrice(); drawPackChosen(); drawPackSum(); return; }
+    if (t.dataset.pkSug) { editing.p.preco = +t.dataset.pkSug; editing.precoManual = true; drawPackSum(); return; }
     if (t.matches("[data-help-off]")) { ls.set("ss_help_off", true); t.closest(".help").remove(); return; }
     if (t.dataset.del) {
       const f = findProduct(t.dataset.del); if (!f) return;
@@ -624,6 +780,7 @@ const PACKS = ${J(db.packs)};
       drawRows();
     }
     if (t.id === "fstock") drawRows();
+    if (t.dataset.pkSize != null) { editing.p.itens[+t.dataset.pkSize].size = t.value; drawPackChosen(); drawPackSum(); }
   });
   document.addEventListener("input", (e) => { if (e.target.id === "q") { state.q = e.target.value; drawRows(); } });
   $("#overlay").addEventListener("click", closePanel);
