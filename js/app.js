@@ -19,17 +19,17 @@
     ...ACESSORIOS.map(p => ({ ...p, tipo: "acessorio" })),
     ...PACKS.map(p => ({ ...p, tipo: "pack", marca: "Shisha Store", sub: p.inclui.join(" · ") })),
   ];
-  ALL.forEach(p => { if (!p.img && FOTOS.includes(p.id)) p.img = `img/${p.id}.jpg`; });
+  ALL.forEach(p => { if (!p.img && !p.semFoto && FOTOS.includes(p.id)) p.img = `img/${p.id}.jpg`; });
   // formato "photo-id" ou "photo-id|bottom" (zona do recorte)
   ALL.forEach(p => {
-    if (p.img || !FOTOS_LIVRES[p.id]) return;
+    if (p.img || p.semFoto || !FOTOS_LIVRES[p.id]) return;
     const [id, crop] = FOTOS_LIVRES[p.id].split("|");
     p.img = `https://images.unsplash.com/${id}?w=700&h=700&q=75&auto=format&fit=crop${crop ? "&crop=" + crop : ""}`;
   });
   // fotos de ambiente para produtos sem foto própria
-  Object.assign(ALL.find(p => p.id === "carv-cocodalya-1kg"), { img: stock("brasas", 700) });
-  Object.assign(ALL.find(p => p.id === "carv-cocodalya-4kg"), { img: stock("carvaoFumo", 700) });
-  Object.assign(ALL.find(p => p.id === "acc-kaloud"), { img: stock("cabecote", 700) });
+  [["carv-cocodalya-1kg", "brasas"], ["carv-cocodalya-4kg", "carvaoFumo"], ["acc-kaloud", "cabecote"]].forEach(([id, k]) => {
+    const p = ALL.find(x => x.id === id); if (p && !p.img && !p.semFoto) p.img = stock(k, 700);
+  });
   const byId = Object.fromEntries(ALL.map(p => [p.id, p]));
   const photo = (id, alt = "") => `<img src="img/${id}.jpg" alt="${alt}" loading="lazy">`;
 
@@ -45,7 +45,7 @@
   };
 
   /* ---------- Estado ---------- */
-  let cart = store.get("ss_cart", []);
+  let cart = store.get("ss_cart", []).filter(c => byId[c.id] && !byId[c.id].esgotado);
   let favs = store.get("ss_favs", []);
 
   const heart = `<svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>`;
@@ -60,8 +60,8 @@
   /* ---------- Tarjeta de producto (estilo The Premium Way) ---------- */
   function card(p) {
     const fav = favs.includes(p.id);
-    const tag = p.novo ? `<span class="tag tag--new">Novo</span>` : p.top ? `<span class="tag">Top vendas</span>` : "";
-    return `<article class="card" data-id="${p.id}">
+    const tag = p.esgotado ? `<span class="tag tag--out">Esgotado</span>` : p.novo ? `<span class="tag tag--new">Novo</span>` : p.top ? `<span class="tag">Top vendas</span>` : "";
+    return `<article class="card ${p.esgotado ? "is-out" : ""}" data-id="${p.id}">
       <a class="card__img ${p.img ? "has-photo" : ""}" href="#/p/${p.id}">${img(p)}${tag}</a>
       <button class="card__fav ${fav ? "is-on" : ""}" data-fav="${p.id}" aria-label="Favorito">${heart}</button>
       <div class="card__body">
@@ -88,7 +88,7 @@
       <p class="ess__notes">${p.notas}</p>
       <div class="ess__foot">
         <span class="card__price" data-price>${eur(p.precos[sizes[0]])}</span>
-        <button class="btn btn--dark btn--sm" data-add="${p.id}" data-variant="${sizes[0]}">Adicionar</button>
+        ${p.esgotado ? `<button class="btn btn--ghost btn--sm" disabled>Esgotado</button>` : `<button class="btn btn--dark btn--sm" data-add="${p.id}" data-variant="${sizes[0]}">Adicionar</button>`}
       </div>
     </article>`;
   }
@@ -233,13 +233,13 @@
           ${p.destaque ? `<span class="tag">Mais completo</span>` : ""}
           <h3>${p.nome}</h3>
           <ul>${p.inclui.map(i => `<li>${i}</li>`).join("")}</ul>
-          <div class="pack__foot"><span class="pack__price">${eur(p.preco)}</span><button class="btn btn--dark" data-add="${p.id}">Adicionar</button></div>
+          <div class="pack__foot"><span class="pack__price">${eur(p.preco)}</span>${p.esgotado ? `<button class="btn btn--ghost" disabled>Esgotado</button>` : `<button class="btn btn--dark" data-add="${p.id}">Adicionar</button>`}</div>
         </div>
       </article>`).join("")}</div>`;
   }
 
   function lojaHTML() {
-    return `<section class="loja" id="loja" style="--loja-bg:url('img/pack-85.jpg')">
+    return `<section class="loja" id="loja" style="--loja-bg:url('${new URL("img/pack-85.jpg", location.href).href}')">
       <div class="container loja__grid">
         <div>
           <span class="eyebrow eyebrow--light">Loja física</span>
@@ -413,6 +413,7 @@
           <div class="product__actions">
             ${p.preco == null
               ? `<a class="btn btn--dark btn--lg" href="https://wa.me/${STORE.whatsapp}?text=${encodeURIComponent(`Olá! Qual o preço da ${p.nome} (${p.altura} cm)?`)}" target="_blank" rel="noopener">Pedir preço no WhatsApp</a>`
+              : p.esgotado ? `<button class="btn btn--ghost btn--lg" disabled>Esgotado de momento</button>`
               : `<button class="btn btn--dark btn--lg" data-add="${p.id}" ${sizes ? `data-variant="${sizes[0]}"` : ""} id="pAdd">Adicionar ao carrinho</button>`}
             <button class="btn btn--ghost btn--lg ${favs.includes(p.id) ? "is-on" : ""}" data-fav="${p.id}">${heart} Favorito</button>
           </div>
@@ -513,14 +514,23 @@
         : `<p class="empty">O carrinho está vazio.</p><a class="btn btn--dark" href="#/shishas">Ver shishas</a>`;
       foot.innerHTML = cart.length ? `
         <div class="total"><span>Total</span><strong>${eur(total)}</strong></div>
-        <a class="btn btn--wa btn--lg btn--block" target="_blank" rel="noopener" href="https://wa.me/${STORE.whatsapp}?text=${encodeURIComponent(waMessage(total))}">Encomendar por WhatsApp</a>
+        <a class="btn btn--wa btn--lg btn--block" id="waOrder" target="_blank" rel="noopener" href="https://wa.me/${STORE.whatsapp}?text=${encodeURIComponent(waMessage(total))}">Encomendar por WhatsApp</a>
         <p class="muted small">Pagamento e levantamento na loja: ${STORE.morada}.</p>` : "";
     }
     open($("#cartDrawer"));
   }
   function waMessage(total) {
     const lines = cart.map(c => { const p = byId[c.id]; return `• ${c.qty}x ${p.nome}${c.variant ? " (" + c.variant + ")" : ""} — ${eur((priceOf(c) || 0) * c.qty)}`; });
-    return `Olá Shisha Store! Gostaria de encomendar:\n${lines.join("\n")}\n\nTotal: ${eur(total)}\nLevantamento na loja.`;
+    return `Olá ${STORE.nome}! Gostaria de encomendar:\n${lines.join("\n")}\n\nTotal: ${eur(total)}\nLevantamento na loja.`;
+  }
+  // Regista a encomenda para o back office (admin.html → Encomendas)
+  function registerOrder() {
+    const items = cart.map(c => { const p = byId[c.id]; return { id: c.id, nome: p.nome, variant: c.variant, qty: c.qty, preco: priceOf(c) || 0 }; });
+    const total = items.reduce((s, i) => s + i.preco * i.qty, 0);
+    const orders = store.get("ss_orders", []);
+    const n = orders.reduce((m, o) => Math.max(m, o.n || 0), 1000) + 1;
+    orders.unshift({ n, data: new Date().toISOString(), items, total, estado: "nova", canal: "WhatsApp" });
+    store.set("ss_orders", orders);
   }
 
   /* ---------- Pesquisa ---------- */
@@ -552,6 +562,7 @@
     const t = e.target.closest("button, a"); if (!t) return;
 
     if (t.dataset.add) { addToCart(t.dataset.add, t.dataset.variant); return; }
+    if (t.id === "waOrder") { registerOrder(); cart = []; saveCart(); setTimeout(() => { closeAll(); toast("Encomenda enviada! Obrigado 🙌"); }, 300); return; }
     if (t.dataset.fav) { toggleFav(t.dataset.fav); if ($("#cartDrawer").classList.contains("is-open") && $("#drawerTitle").textContent === "Favoritos") openDrawer("fav"); return; }
     if (t.dataset.qty != null && t.dataset.d) {
       const c = cart[+t.dataset.qty]; c.qty += +t.dataset.d; if (c.qty <= 0) cart.splice(+t.dataset.qty, 1);
@@ -610,6 +621,11 @@
     el.innerHTML = `<img class="logo__img" src="${src}" alt="Shisha Store">`;
   });
   $("#year").textContent = new Date().getFullYear();
+  // Dados da loja editáveis no back office
+  const tel = $(".topbar__center a");
+  if (tel) { tel.textContent = STORE.telefone; tel.href = "tel:+" + STORE.whatsapp; }
+  if (STORE.aviso) $(".topbar__center").textContent = STORE.aviso;
+  $$('a[href^="https://wa.me/"]').forEach(a => { if (!a.href.includes("?")) a.href = "https://wa.me/" + STORE.whatsapp; });
   updateBadges();
   render();
 })();

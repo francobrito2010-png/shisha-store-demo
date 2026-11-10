@@ -276,6 +276,9 @@ svg:not(.art):not(.logo__svg) { width: 22px; height: 22px; fill: none; stroke: c
 .card__fav.is-on svg { fill: #e11d48; stroke: #e11d48; }
 .tag { position: absolute; top: 10px; left: 10px; background: var(--ink); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 4px 9px; border-radius: 999px; }
 .tag--new { background: var(--gold); }
+.tag--out { background: #b91c1c; }
+.card.is-out .card__img img, .card.is-out .card__img .art { opacity: .5; filter: grayscale(.6); }
+.btn[disabled] { opacity: .6; cursor: not-allowed; }
 
 /* ---------- Essências (Hookah.com) ---------- */
 .ess-band { background: linear-gradient(180deg, #faf6f0, #fff); }
