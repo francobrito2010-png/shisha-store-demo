@@ -1,24 +1,84 @@
 /* =========================================================
-   Dados guardados pelo back office (admin.html)
-   Carregado depois de data.js: se existirem alterações feitas no
-   painel, substituem o catálogo e os dados da loja.
-   Na demonstração ficam guardadas neste navegador (localStorage);
-   para publicar, usar "Exportar data.js" no painel.
+   Camada de dados da loja
+   - Com Supabase configurado (js/config.js): lê o catálogo e os dados
+     da loja da base de dados e grava as encomendas lá.
+   - Sem Supabase: modo demonstração (data.js + alterações do navegador).
+   Carregado depois de data.js e config.js.
    ========================================================= */
-(() => {
-  let saved = null;
-  try { saved = JSON.parse(localStorage.getItem("ss_catalog")); } catch {}
-  if (!saved) return;
-  const lists = { shishas: SHISHAS, essencias: ESSENCIAS, carvao: CARVAO, acessorios: ACESSORIOS, packs: PACKS };
-  for (const [k, arr] of Object.entries(lists)) {
-    if (Array.isArray(saved[k])) arr.splice(0, arr.length, ...saved[k]);
-  }
-  if (saved.store) Object.assign(STORE, saved.store);
-})();
+window.SSDB = (() => {
+  const C = window.SS_CONFIG || {};
+  const live = !!(C.SUPABASE_URL && C.SUPABASE_ANON_KEY);
+  const LISTS = { shishas: SHISHAS, essencias: ESSENCIAS, carvao: CARVAO, acessorios: ACESSORIOS, packs: PACKS };
 
-// Na loja, os produtos ocultos não aparecem (no painel aparecem todos)
-if (!window.SS_ADMIN) {
-  [SHISHAS, ESSENCIAS, CARVAO, ACESSORIOS, PACKS].forEach(arr => {
-    for (let i = arr.length - 1; i >= 0; i--) if (arr[i].oculto) arr.splice(i, 1);
+  const rest = (path, opt = {}) => fetch(`${C.SUPABASE_URL}/rest/v1/${path}`, {
+    ...opt,
+    headers: { apikey: C.SUPABASE_ANON_KEY, Authorization: `Bearer ${C.SUPABASE_ANON_KEY}`, "Content-Type": "application/json", ...(opt.headers || {}) },
   });
-}
+
+  // Segurança: os textos vindos da base de dados não podem trazer HTML,
+  // e as imagens só podem vir de endereços seguros.
+  const SAFE_IMG = /^(https:\/\/|img\/|data:image\/(jpeg|png|webp);base64,)/i;
+  function clean(v, key) {
+    if (typeof v === "string") {
+      if (key === "img") return SAFE_IMG.test(v) ? v.replace(/["'<>\s]/g, "") : undefined;
+      if (key === "cor") return /^#[0-9a-f]{3,8}$/i.test(v) ? v : "#999999";
+      return v.replace(/[<>]/g, "");
+    }
+    if (Array.isArray(v)) return v.map(x => clean(x));
+    if (v && typeof v === "object") { const o = {}; for (const [k, x] of Object.entries(v)) { const c = clean(x, k); if (c !== undefined) o[k] = c; } return o; }
+    return v;
+  }
+
+  // linhas da tabela "catalog" → listas do catálogo
+  function applyRows(rows) {
+    const by = { shishas: [], essencias: [], carvao: [], acessorios: [], packs: [] };
+    rows.sort((a, b) => a.pos - b.pos).forEach(r => { if (by[r.cat]) by[r.cat].push({ ...clean(r.data), id: String(r.id).replace(/[^a-z0-9-]/gi, "") }); });
+    for (const [k, arr] of Object.entries(LISTS)) arr.splice(0, arr.length, ...by[k]);
+  }
+
+  function applyLocal() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem("ss_catalog")); } catch {}
+    if (!saved) return;
+    for (const [k, arr] of Object.entries(LISTS)) if (Array.isArray(saved[k])) arr.splice(0, arr.length, ...saved[k]);
+    if (saved.store) Object.assign(STORE, saved.store);
+  }
+
+  async function load() {
+    if (!live) return applyLocal();
+    try {
+      const [cat, set] = await Promise.all([
+        rest("catalog?select=id,cat,pos,data&order=pos.asc"),
+        rest("settings?select=store&id=eq.1"),
+      ]);
+      if (cat.ok) { const rows = await cat.json(); if (rows.length) applyRows(rows); }
+      if (set.ok) { const s = await set.json(); if (s[0]?.store) Object.assign(STORE, clean(s[0].store)); }
+    } catch (e) {
+      console.warn("Sem ligação à base de dados — a usar o catálogo guardado no site.", e);
+    }
+  }
+
+  // Na loja, os produtos ocultos não aparecem (no painel aparecem todos)
+  function hideHidden() {
+    if (window.SS_ADMIN) return;
+    Object.values(LISTS).forEach(arr => { for (let i = arr.length - 1; i >= 0; i--) if (arr[i].oculto) arr.splice(i, 1); });
+  }
+
+  // Encomenda feita no carrinho
+  async function placeOrder(items, total) {
+    if (!live) {
+      let orders = [];
+      try { orders = JSON.parse(localStorage.getItem("ss_orders")) || []; } catch {}
+      const n = orders.reduce((m, o) => Math.max(m, o.n || 0), 1000) + 1;
+      orders.unshift({ n, data: new Date().toISOString(), items, total, estado: "nova", canal: "WhatsApp" });
+      try { localStorage.setItem("ss_orders", JSON.stringify(orders)); } catch {}
+      return;
+    }
+    try {
+      await rest("orders", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ items, total: Math.round(total * 100) / 100 }) });
+    } catch (e) { console.warn("Não foi possível registar a encomenda.", e); }
+  }
+
+  const ready = window.SS_ADMIN ? Promise.resolve() : load().then(hideHidden);
+  return { live, config: C, LISTS, applyRows, clean, placeOrder, ready };
+})();

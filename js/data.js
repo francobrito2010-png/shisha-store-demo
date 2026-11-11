@@ -19,6 +19,10 @@ const STORE = {
     ["Domingo", "14h–20h"],
     ["Feriados", "Horário de domingo"],
   ],
+  // Dados legais (Política de privacidade e Termos) — editar no painel → Dados da loja
+  empresa: "",
+  nif: "",
+  email: "",
 };
 
 /* ---------- SHISHAS ---------- */

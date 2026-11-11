@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://images.unsplash.com https://*.supabase.co; connect-src 'self' data: https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Gestão · Shisha Store</title>
   <link rel="icon" type="image/png" href="img/logo-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -15,15 +17,22 @@
 
   <!-- LOGIN -->
   <section class="login" id="login" hidden>
-    <form class="login__card" id="loginForm" autocomplete="off">
+    <form class="login__card" id="loginForm">
       <img src="img/logo-h.png" alt="Shisha Store" class="login__logo">
       <h1>Área de gestão</h1>
-      <p class="muted">Introduz o PIN para gerir a loja.</p>
-      <input type="password" inputmode="numeric" id="pin" placeholder="PIN" maxlength="8" autofocus>
-      <p class="login__err" id="loginErr" hidden>PIN incorreto. Tenta outra vez.</p>
-      <button class="btn btn--dark btn--block" type="submit">Entrar</button>
-      <p class="login__hint">Demonstração · PIN: <b>1234</b></p>
-      <a href="index.html" class="login__back">← Voltar à loja</a>
+      <div id="loginLive" hidden>
+        <p class="muted">Entra com o teu email e palavra-passe.</p>
+        <input type="email" id="email" class="login__field" placeholder="Email" autocomplete="username">
+        <input type="password" id="password" class="login__field" placeholder="Palavra-passe" autocomplete="current-password">
+      </div>
+      <div id="loginDemo" hidden>
+        <p class="muted">Introduz o PIN para gerir a loja.</p>
+        <input type="password" inputmode="numeric" id="pin" placeholder="PIN" maxlength="8" autocomplete="off">
+        <p class="login__hint">Demonstração · PIN: <b>1234</b></p>
+      </div>
+      <p class="login__err" id="loginErr" hidden></p>
+      <button class="btn btn--dark btn--block" type="submit" id="loginBtn">Entrar</button>
+      <a href="./" class="login__back">← Voltar à loja</a>
     </form>
   </section>
 
@@ -77,8 +86,10 @@
 
   <div class="toast" id="toast"></div>
 
-  <script>window.SS_ADMIN = true;</script>
+  <script src="js/admin-boot.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script>
   <script src="js/data.js"></script>
+  <script src="js/config.js"></script>
   <script src="js/store-data.js"></script>
   <script src="js/admin.js"></script>
 </body>

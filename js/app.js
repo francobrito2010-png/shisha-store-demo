@@ -1,7 +1,7 @@
 /* =========================================================
    SHISHA STORE AMADORA — App v1.0 (HTML/CSS/JS sem dependências)
    ========================================================= */
-(() => {
+SSDB.ready.then(() => {
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const eur = (v) => v == null ? "Sob consulta" : v.toLocaleString("pt-PT", { style: "currency", currency: "EUR", minimumFractionDigits: v % 1 ? 2 : 0 });
@@ -388,6 +388,39 @@
     <section class="container section">${packsHTML()}</section>`;
   views.loja = () => lojaHTML();
 
+  /* ---------- PÁGINAS LEGAIS ---------- */
+  const fill = (v, ph) => v ? v : `<em class="muted">[${ph}]</em>`;
+  const legalPage = (title, body) => `
+    <section class="page-hero"><div class="container"><nav class="crumbs"><a href="#/">Início</a> / <span>${title}</span></nav><h1>${title}</h1></div></section>
+    <section class="container section legal">${body}<p class="muted small">Última atualização: ${new Date().toLocaleDateString("pt-PT", { month: "long", year: "numeric" })}</p></section>`;
+  const owner = () => `${fill(STORE.empresa, "nome da empresa")}, NIF ${fill(STORE.nif, "NIF")}, com sede em ${STORE.morada}`;
+  views.privacidade = () => legalPage("Política de privacidade", `
+    <h2>Quem é o responsável pelos seus dados</h2>
+    <p>${owner()} ("${STORE.nome}"). Contacto: ${fill(STORE.email, "email")} · ${STORE.telefone}.</p>
+    <h2>Que dados recolhemos</h2>
+    <p>Este site não tem registo de clientes nem pede dados pessoais. Quando faz uma encomenda, guardamos apenas os produtos, as quantidades e o valor, para preparar o pedido. Os seus dados de contacto (nome e número) chegam-nos pelo WhatsApp, quando decide enviar a mensagem.</p>
+    <h2>Para que usamos os dados</h2>
+    <p>Apenas para preparar e entregar a sua encomenda e responder às suas mensagens. Não vendemos nem partilhamos os seus dados com terceiros para fins de marketing.</p>
+    <h2>Dados guardados no seu navegador</h2>
+    <p>O carrinho, os favoritos e a confirmação de idade ficam guardados no seu próprio navegador (armazenamento local) e não nos são enviados. Pode apagá-los a qualquer momento nas definições do navegador. Não usamos cookies de publicidade.</p>
+    <h2>Serviços de terceiros</h2>
+    <p>O site usa o WhatsApp (Meta) para as encomendas, o Google Maps para o mapa da loja e um serviço de alojamento de base de dados na União Europeia. Estes serviços têm as suas próprias políticas de privacidade.</p>
+    <h2>Os seus direitos</h2>
+    <p>Pode pedir o acesso, a correção ou a eliminação dos seus dados através de ${fill(STORE.email, "email")}. Pode também apresentar reclamação à Comissão Nacional de Proteção de Dados (www.cnpd.pt).</p>`);
+  views.termos = () => legalPage("Termos e condições", `
+    <h2>Identificação</h2>
+    <p>${owner()}. Contacto: ${fill(STORE.email, "email")} · ${STORE.telefone}.</p>
+    <h2>Venda a maiores de 18 anos</h2>
+    <p>A venda de produtos de tabaco e artigos relacionados é exclusiva a maiores de 18 anos. Poderá ser pedido documento de identificação no levantamento.</p>
+    <h2>Encomendas</h2>
+    <p>As encomendas feitas no site são enviadas por WhatsApp e só ficam confirmadas quando respondermos. Os produtos de tabaco são reservados online e pagos e levantados na loja física.</p>
+    <h2>Preços</h2>
+    <p>Os preços incluem IVA à taxa legal em vigor. Em caso de erro evidente de preço, contactaremos o cliente antes de confirmar a encomenda.</p>
+    <h2>Trocas e devoluções</h2>
+    <p>Os artigos não usados e na embalagem original podem ser trocados ou devolvidos no prazo legal. Produtos de tabaco abertos não podem ser devolvidos por razões de higiene e segurança.</p>
+    <h2>Resolução de litígios</h2>
+    <p>Em caso de litígio, o consumidor pode recorrer ao Livro de Reclamações (www.livroreclamacoes.pt) ou a uma entidade de resolução alternativa de litígios de consumo, como o CNIACC — Centro Nacional de Informação e Arbitragem de Conflitos de Consumo (www.cniacc.pt).</p>`);
+
   /* ---------- PRODUTO ---------- */
   views.product = (_, id) => {
     const p = byId[id];
@@ -528,10 +561,7 @@
   function registerOrder() {
     const items = cart.map(c => { const p = byId[c.id]; return { id: c.id, nome: p.nome, variant: c.variant, qty: c.qty, preco: priceOf(c) || 0 }; });
     const total = items.reduce((s, i) => s + i.preco * i.qty, 0);
-    const orders = store.get("ss_orders", []);
-    const n = orders.reduce((m, o) => Math.max(m, o.n || 0), 1000) + 1;
-    orders.unshift({ n, data: new Date().toISOString(), items, total, estado: "nova", canal: "WhatsApp" });
-    store.set("ss_orders", orders);
+    SSDB.placeOrder(items, total);
   }
 
   /* ---------- Pesquisa ---------- */
@@ -593,7 +623,6 @@
       case "burger": open($("#mobileMenu")); break;
       case "cartBtn": openDrawer("cart"); break;
       case "favBtn": openDrawer("fav"); break;
-      case "accountBtn": toast("Área de cliente disponível na versão 2.0"); break;
       case "searchBtn": { const sb = $("#searchbar"); const show = sb.hidden; closeAll(); sb.hidden = !show; if (show) $("#searchInput").focus(); break; }
     }
   });
@@ -609,8 +638,7 @@
   window.addEventListener("hashchange", render);
 
   /* ---------- Verificação de idade (18+) ---------- */
-  // ?captura salta a verificação (só para gerar capturas de ecrã da proposta)
-  if (!store.get("ss_age", false) && !location.search.includes("captura")) {
+  if (!store.get("ss_age", false)) {
     const g = $("#ageGate"); g.hidden = false; document.body.style.overflow = "hidden";
     $("#ageYes").onclick = () => { store.set("ss_age", true); g.hidden = true; document.body.style.overflow = ""; };
     $("#ageNo").onclick = () => { $(".age-card p").textContent = "Lamentamos, o acesso é exclusivo a maiores de 18 anos."; $(".age-actions").remove(); };
@@ -627,6 +655,12 @@
   if (tel) { tel.textContent = STORE.telefone; tel.href = "tel:+" + STORE.whatsapp; }
   if (STORE.aviso) $(".topbar__center").textContent = STORE.aviso;
   $$('a[href^="https://wa.me/"]').forEach(a => { if (!a.href.includes("?")) a.href = "https://wa.me/" + STORE.whatsapp; });
+  // rodapé com os dados atuais da loja
+  const set = (id, fn) => { const el = $(id); if (el) fn(el); };
+  set("#footMorada", el => { el.textContent = STORE.morada; });
+  set("#footHorario", el => { el.innerHTML = ""; (STORE.horario || []).forEach(([d, h], i) => { if (i) el.append(document.createElement("br")); el.append(`${d}: ${h}`); }); });
+  set("#footTel", el => { el.textContent = STORE.telefone; el.href = "tel:+" + STORE.whatsapp; });
+  set("#footIg", el => { if (/^https:\/\//.test(STORE.instagram || "")) el.href = STORE.instagram; });
   updateBadges();
   render();
-})();
+});

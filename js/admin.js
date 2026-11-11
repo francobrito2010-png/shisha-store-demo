@@ -35,11 +35,77 @@
   };
   let orders = ls.get("ss_orders", []);
 
-  function save(msg = "Alterações guardadas") {
-    const ok = ls.set("ss_catalog", db);
-    toast(ok ? msg : "Sem espaço no navegador: usa fotos mais pequenas ou um link", !ok);
+  /* =========================================================
+     BASE DE DADOS (Supabase) — modo real
+     Sem configuração em js/config.js → modo demonstração (navegador)
+     ========================================================= */
+  const LIVE = SSDB.live;
+  const sb = LIVE ? window.supabase.createClient(SSDB.config.SUPABASE_URL, SSDB.config.SUPABASE_ANON_KEY) : null;
+  let knownIds = new Set();      // ids que existem na base de dados (para saber o que apagar)
+  let saving = Promise.resolve();
+
+  const rowsFromDb = () => Object.keys(CATS).flatMap(cat => db[cat].map((p, pos) => { const { id, ...data } = p; return { id, cat, pos, data }; }));
+  async function loadRemote() {
+    const [cat, set, ord] = await Promise.all([
+      sb.from("catalog").select("id,cat,pos,data").order("pos"),
+      sb.from("settings").select("store").eq("id", 1).maybeSingle(),
+      sb.from("orders").select("*").order("created_at", { ascending: false }).limit(500),
+    ]);
+    if (cat.error) throw cat.error;
+    if (cat.data.length) {
+      Object.keys(CATS).forEach(k => db[k] = []);
+      cat.data.forEach(r => { if (db[r.cat]) db[r.cat].push({ ...r.data, id: r.id }); });
+      knownIds = new Set(cat.data.map(r => r.id));
+    } else {
+      // primeira vez: copia o catálogo do site para a base de dados
+      await syncRemote(); toast("Catálogo copiado para a base de dados");
+    }
+    if (set.data?.store) db.store = { ...db.store, ...set.data.store };
+    else await sb.from("settings").upsert({ id: 1, store: publicStore() });
+    if (!ord.error) orders = ord.data.map(o => ({ n: o.n, data: o.created_at, items: o.items, total: Number(o.total), estado: o.estado, canal: o.canal, exemplo: o.exemplo }));
   }
-  const saveOrders = () => ls.set("ss_orders", orders);
+  const publicStore = () => { const s = { ...db.store }; delete s.pin; return s; };
+  async function uploadPhotos() {
+    for (const p of allProducts().map(x => x.p)) {
+      if (!p.img || !p.img.startsWith("data:")) continue;
+      const blob = await (await fetch(p.img)).blob();
+      const path = `${p.id}-${Date.now()}.jpg`;
+      const up = await sb.storage.from("produtos").upload(path, blob, { contentType: "image/jpeg", upsert: true });
+      if (up.error) throw up.error;
+      p.img = sb.storage.from("produtos").getPublicUrl(path).data.publicUrl;
+    }
+  }
+  async function syncRemote() {
+    await uploadPhotos();
+    const rows = rowsFromDb();
+    const up = await sb.from("catalog").upsert(rows);
+    if (up.error) throw up.error;
+    const ids = new Set(rows.map(r => r.id));
+    const gone = [...knownIds].filter(id => !ids.has(id));
+    if (gone.length) { const del = await sb.from("catalog").delete().in("id", gone); if (del.error) throw del.error; }
+    knownIds = ids;
+    const st = await sb.from("settings").upsert({ id: 1, store: publicStore(), updated_at: new Date().toISOString() });
+    if (st.error) throw st.error;
+  }
+
+  function save(msg = "Alterações guardadas") {
+    if (!LIVE) {
+      const ok = ls.set("ss_catalog", db);
+      if (!ok) return toast("Sem espaço no navegador: usa fotos mais pequenas ou um link", true);
+      return msg && toast(msg);
+    }
+    // guarda em fila (uma de cada vez) para nunca se perderem alterações
+    saving = saving.then(syncRemote).then(() => msg && toast(msg)).catch(err => { console.error(err); toast("Não foi possível guardar. Verifica a internet e tenta outra vez.", true); });
+    return saving;
+  }
+  const saveOrders = () => { if (!LIVE) ls.set("ss_orders", orders); };
+  async function setOrderState(o) { if (LIVE) { const r = await sb.from("orders").update({ estado: o.estado }).eq("n", o.n); if (r.error) toast("Não foi possível atualizar a encomenda", true); } else saveOrders(); }
+  async function deleteOrder(n) { if (LIVE) { const r = await sb.from("orders").delete().eq("n", n); if (r.error) return toast("Não foi possível apagar", true); } orders = orders.filter(o => o.n !== n); saveOrders(); }
+  async function refreshOrders() {
+    if (!LIVE) return;
+    const r = await sb.from("orders").select("*").order("created_at", { ascending: false }).limit(500);
+    if (!r.error) orders = r.data.map(o => ({ n: o.n, data: o.created_at, items: o.items, total: Number(o.total), estado: o.estado, canal: o.canal, exemplo: o.exemplo }));
+  }
 
   /* ---------- Ajudas de produto ---------- */
   const nameOf = (p) => p.nome || p.sabor || "Sem nome";
@@ -86,18 +152,47 @@
   };
 
   /* =========================================================
-     LOGIN (PIN de demonstração — não é segurança real)
+     LOGIN
+     - Modo real: email + palavra-passe (Supabase Auth)
+     - Modo demonstração: PIN (não é segurança real)
      ========================================================= */
-  const pinOk = () => sessionStorage.getItem("ss_admin") === "1";
-  function showLogin() { $("#login").hidden = false; $("#app").hidden = true; setTimeout(() => $("#pin").focus(), 50); }
-  function showApp() { $("#login").hidden = true; $("#app").hidden = false; render(); }
-  $("#loginForm").addEventListener("submit", (e) => {
+  let session = null;
+  const pinOk = () => LIVE ? !!session : sessionStorage.getItem("ss_admin") === "1";
+  function showLogin() {
+    $("#login").hidden = false; $("#app").hidden = true;
+    $("#loginLive").hidden = !LIVE; $("#loginDemo").hidden = LIVE;
+    setTimeout(() => (LIVE ? $("#email") : $("#pin")).focus(), 50);
+  }
+  async function showApp() {
+    $("#login").hidden = true; $("#app").hidden = false;
+    if (LIVE) {
+      $("#view").innerHTML = `<div class="empty">A carregar a loja…</div>`;
+      try { await loadRemote(); } catch (err) { console.error(err); $("#view").innerHTML = `<div class="empty">Não foi possível ligar à base de dados.<br>Verifica a internet e recarrega a página.</div>`; return; }
+    }
+    render();
+  }
+  function loginError(msg) { const e = $("#loginErr"); e.textContent = msg; e.hidden = false; const c = $(".login__card"); c.classList.remove("shake"); void c.offsetWidth; c.classList.add("shake"); }
+  let tries = 0;
+  $("#loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const pin = String(db.store.pin || "1234");
-    if ($("#pin").value === pin) { sessionStorage.setItem("ss_admin", "1"); $("#loginErr").hidden = true; showApp(); }
-    else { $("#loginErr").hidden = false; $("#pin").value = ""; const c = $(".login__card"); c.classList.remove("shake"); void c.offsetWidth; c.classList.add("shake"); }
+    if (!LIVE) {
+      if ($("#pin").value === String(db.store.pin || "1234")) { sessionStorage.setItem("ss_admin", "1"); $("#loginErr").hidden = true; showApp(); }
+      else { $("#pin").value = ""; loginError("PIN incorreto. Tenta outra vez."); }
+      return;
+    }
+    if (!$("#email").value.trim() || !$("#password").value) return loginError("Escreve o email e a palavra-passe.");
+    if (++tries > 5) { loginError("Demasiadas tentativas. Espera um minuto."); setTimeout(() => tries = 0, 60000); return; }
+    const btn = $("#loginBtn"); btn.disabled = true; btn.textContent = "A entrar…";
+    const { data, error } = await sb.auth.signInWithPassword({ email: $("#email").value.trim(), password: $("#password").value });
+    btn.disabled = false; btn.textContent = "Entrar";
+    if (error) { $("#password").value = ""; return loginError("Email ou palavra-passe incorretos."); }
+    session = data.session; tries = 0; $("#loginErr").hidden = true; $("#password").value = ""; showApp();
   });
-  $("#logout").addEventListener("click", () => { sessionStorage.removeItem("ss_admin"); location.hash = ""; showLogin(); });
+  $("#logout").addEventListener("click", async () => {
+    if (LIVE) { await sb.auth.signOut(); session = null; } else sessionStorage.removeItem("ss_admin");
+    location.hash = ""; showLogin();
+  });
+  if (LIVE) sb.auth.onAuthStateChange((_ev, s) => { session = s; if (!s && !$("#app").hidden) showLogin(); });
 
   /* =========================================================
      ROUTER
@@ -313,7 +408,7 @@
     else specific = money("preco", "Preço", p.preco);
 
     $("#panelBody").innerHTML = `
-      <form class="form" id="prodForm" onsubmit="return false">
+      <form class="form" id="prodForm">
         ${isNew ? `<div class="section-title">1. O que vais adicionar?</div>
         <div class="cat-pick">${Object.entries(CATS).map(([k, c]) => `<button type="button" data-pick-cat="${k}" class="${k === cat ? "is-on" : ""}"><span>${CAT_EMOJI[k]}</span>${c.label}</button>`).join("")}</div>` : ""}
         <div class="section-title">${isNew ? "2. " : ""}Foto</div>
@@ -467,7 +562,7 @@
   function drawPackEditor() {
     const pk = editing.p, isNew = editing.i === -1;
     $("#panelBody").innerHTML = `
-      <form class="form" id="packForm" onsubmit="return false">
+      <form class="form" id="packForm">
         <div class="section-title">${isNew ? "1. " : ""}Nome e foto</div>
         <div class="field"><label for="pk_nome">Nome do pack</label><input id="pk_nome" value="${esc(pk.nome)}" placeholder="Ex.: Pack Verão, Pack Iniciante…"></div>
         <div class="photo">
@@ -606,7 +701,21 @@
     $("#panel").classList.add("is-open"); $("#overlay").classList.add("is-on");
     editing = null; $("#panel").dataset.order = o.n;
   }
-  function demoOrders() {
+  async function demoOrders() {
+    if (LIVE) {
+      const tmp = orders; orders = []; demoOrdersLocal(); const fake = orders; orders = tmp;
+      const r = await sb.from("orders").insert(fake.map(o => ({ created_at: o.data, items: o.items, total: Math.round(o.total * 100) / 100, estado: o.estado, canal: o.canal, exemplo: true })));
+      if (r.error) return toast("Não foi possível criar exemplos", true);
+      await refreshOrders(); toast("Encomendas de exemplo criadas"); return render();
+    }
+    demoOrdersLocal(); saveOrders(); toast("Encomendas de exemplo criadas"); render();
+  }
+  async function clearDemoOrders() {
+    if (LIVE) { const r = await sb.from("orders").delete().eq("exemplo", true); if (r.error) return toast("Não foi possível apagar", true); await refreshOrders(); }
+    else { orders = orders.filter(o => !o.exemplo); saveOrders(); }
+    toast("Encomendas de exemplo apagadas"); render();
+  }
+  function demoOrdersLocal() {
     const pool = allProducts().filter(({ p }) => priceOf(p) != null && !p.oculto);
     const pick = () => pool[Math.floor(Math.random() * pool.length)].p;
     const estados = ["nova", "nova", "confirmada", "pronta", "entregue", "entregue", "entregue", "cancelada"];
@@ -617,7 +726,6 @@
       orders.push({ n: ++n, data: d.toISOString(), items, total: items.reduce((s, i) => s + i.preco * i.qty, 0), estado: estados[k % estados.length], canal: "WhatsApp", exemplo: true });
     }
     orders.sort((a, b) => new Date(b.data) - new Date(a.data));
-    saveOrders(); toast("Encomendas de exemplo criadas"); render();
   }
 
   /* ---------- DADOS DA LOJA ---------- */
@@ -628,7 +736,7 @@
     $("#view").innerHTML = `
       <div class="two">
         <div class="card"><div class="card__head"><h3>Informação da loja</h3></div><div class="card__body">
-          <form class="form" id="storeForm" onsubmit="return false">
+          <form class="form" id="storeForm">
             <div class="row">
               <div class="field"><label>Nome da loja</label><input name="nome" value="${esc(s.nome)}"></div>
               <div class="field"><label>Cidade</label><input name="cidade" value="${esc(s.cidade)}"></div>
@@ -640,6 +748,12 @@
             </div>
             <div class="field"><label>Instagram</label><input name="instagram" value="${esc(s.instagram)}"></div>
             <div class="field"><label>Aviso no topo da loja</label><input name="aviso" value="${esc(s.aviso || "")}" placeholder="Ex.: 🎉 Novas essências Adalya esta semana!"><small>Vazio = mostra o telefone de atendimento.</small></div>
+            <div class="section-title">Dados legais</div>
+            <div class="row">
+              <div class="field"><label>Nome da empresa</label><input name="empresa" value="${esc(s.empresa || "")}" placeholder="Ex.: Nome Empresa, Lda."></div>
+              <div class="field"><label>NIF</label><input name="nif" value="${esc(s.nif || "")}" inputmode="numeric" maxlength="9"></div>
+            </div>
+            <div class="field"><label>Email de contacto</label><input name="email" type="email" value="${esc(s.email || "")}"><small>Aparecem na Política de privacidade e nos Termos (obrigatório por lei).</small></div>
           </form>
         </div></div>
         <div class="grid" style="align-content:start">
@@ -647,32 +761,45 @@
             ${[0, 1, 2].map(i => `<div class="row"><div class="field"><input data-h="${i}" data-k="0" value="${esc(h[i]?.[0] || "")}" placeholder="Dias"></div><div class="field"><input data-h="${i}" data-k="1" value="${esc(h[i]?.[1] || "")}" placeholder="Horas"></div></div>`).join("")}
           </div></div></div>
           <div class="card"><div class="card__head"><h3>Segurança</h3></div><div class="card__body"><div class="form">
-            <div class="field"><label>PIN de acesso ao painel</label><input id="newPin" type="password" inputmode="numeric" maxlength="8" placeholder="Novo PIN (4 a 8 números)"><small>Na demonstração o PIN é 1234.</small></div>
+            ${LIVE ? `<div class="field"><label>Nova palavra-passe</label><input id="newPass" type="password" autocomplete="new-password" placeholder="Mínimo 10 caracteres"><small>Sessão iniciada como ${esc(session?.user?.email || "")}.</small></div>
+            <button class="btn btn--ghost btn--sm" id="changePass" type="button">Mudar palavra-passe</button>`
+            : `<div class="field"><label>PIN de acesso ao painel</label><input id="newPin" type="password" inputmode="numeric" maxlength="8" placeholder="Novo PIN (4 a 8 números)"><small>Na demonstração o PIN é 1234.</small></div>`}
           </div></div></div>
         </div>
       </div>`;
     $("#saveStore").addEventListener("click", () => {
       const f = $("#storeForm").elements;
-      ["nome", "cidade", "morada", "telefone", "whatsapp", "instagram", "aviso"].forEach(k => db.store[k] = f[k].value.trim());
+      ["nome", "cidade", "morada", "telefone", "whatsapp", "instagram", "aviso", "empresa", "nif", "email"].forEach(k => db.store[k] = f[k].value.trim());
       db.store.whatsapp = db.store.whatsapp.replace(/\D/g, "");
+      if (db.store.instagram && !/^https:\/\//.test(db.store.instagram)) return toast("O Instagram deve começar por https://", true);
       db.store.horario = [0, 1, 2].map(i => [$(`[data-h="${i}"][data-k="0"]`).value.trim(), $(`[data-h="${i}"][data-k="1"]`).value.trim()]).filter(r => r[0] || r[1]);
-      const pin = $("#newPin").value.trim();
+      const pin = $("#newPin")?.value.trim();
       if (pin) { if (!/^\d{4,8}$/.test(pin)) return toast("O PIN deve ter 4 a 8 números", true); db.store.pin = pin; }
       save("Dados da loja guardados");
+    });
+    $("#changePass")?.addEventListener("click", async () => {
+      const pw = $("#newPass").value;
+      if (pw.length < 10) return toast("A palavra-passe deve ter pelo menos 10 caracteres", true);
+      const { error } = await sb.auth.updateUser({ password: pw });
+      $("#newPass").value = "";
+      toast(error ? "Não foi possível mudar a palavra-passe" : "Palavra-passe alterada", !!error);
     });
   };
 
   /* ---------- EXPORTAR / PUBLICAR ---------- */
   views.dados = () => {
-    setHeader("Cópias de segurança", "Guarda uma cópia de tudo ou envia as alterações para o site.");
+    setHeader("Cópias de segurança", LIVE ? "Guarda uma cópia de tudo, por precaução." : "Guarda uma cópia de tudo ou envia as alterações para o site.");
     const changed = !!localStorage.getItem("ss_catalog");
     $("#view").innerHTML = `
-      <div class="note">${I.info}<div><b>Como funciona:</b> as alterações ficam guardadas neste navegador e já aparecem na loja aberta aqui. Para que todos os clientes as vejam, descarrega o ficheiro <b>data.js</b> e substitui o da pasta <code>js/</code> do site (ou envia-o ao teu programador).${changed ? "" : "<br><br>Ainda não fizeste alterações ao catálogo original."}</div></div>
+      <div class="note">${I.info}<div>${LIVE
+        ? `<b>Tudo é publicado automaticamente.</b> Quando guardas uma alteração, os clientes veem-na logo na loja. Recomendamos descarregar uma cópia de segurança uma vez por mês.`
+        : `<b>Como funciona:</b> as alterações ficam guardadas neste navegador e já aparecem na loja aberta aqui. Para que todos os clientes as vejam, descarrega o ficheiro <b>data.js</b> e substitui o da pasta <code>js/</code> do site (ou envia-o ao teu programador).${changed ? "" : "<br><br>Ainda não fizeste alterações ao catálogo original."}`}</div></div>
       <div class="export">
-        <div class="card"><span class="export__icon">${I.file}</span><h3>Exportar data.js</h3><p>Ficheiro com todo o catálogo e os dados da loja, pronto a publicar no site.</p><button class="btn btn--dark" data-export="js">${I.down} Descarregar data.js</button></div>
-        <div class="card"><span class="export__icon">${I.down}</span><h3>Cópia de segurança</h3><p>Guarda tudo (produtos, loja e encomendas) num ficheiro para recuperar mais tarde.</p><button class="btn btn--ghost" data-export="json">${I.down} Descarregar cópia</button></div>
-        <div class="card"><span class="export__icon">${I.up}</span><h3>Restaurar cópia</h3><p>Carrega uma cópia de segurança feita antes neste painel.</p><label class="btn btn--ghost" style="cursor:pointer">${I.up} Escolher ficheiro<input type="file" accept="application/json" id="importFile" hidden></label></div>
-        <div class="card"><span class="export__icon">${I.reset}</span><h3>Repor demonstração</h3><p>Apaga as alterações feitas neste navegador e volta ao catálogo original.</p><button class="btn btn--danger" data-reset>${I.reset} Repor tudo</button></div>
+        ${LIVE ? "" : `<div class="card"><span class="export__icon">${I.file}</span><h3>Exportar data.js</h3><p>Ficheiro com todo o catálogo e os dados da loja, pronto a publicar no site.</p><button class="btn btn--dark" data-export="js">${I.down} Descarregar data.js</button></div>`}
+        <div class="card"><span class="export__icon">${I.down}</span><h3>Cópia de segurança</h3><p>Guarda tudo (produtos, loja e encomendas) num ficheiro para recuperar mais tarde.</p><button class="btn btn--dark" data-export="json">${I.down} Descarregar cópia</button></div>
+        <div class="card"><span class="export__icon">${I.up}</span><h3>Restaurar cópia</h3><p>Carrega uma cópia de segurança feita antes neste painel.${LIVE ? " Substitui o catálogo atual." : ""}</p><label class="btn btn--ghost" style="cursor:pointer">${I.up} Escolher ficheiro<input type="file" accept="application/json" id="importFile" hidden></label></div>
+        ${orders.some(o => o.exemplo) ? `<div class="card"><span class="export__icon">${I.trash}</span><h3>Apagar encomendas de exemplo</h3><p>Remove as encomendas de exemplo criadas para testar o painel.</p><button class="btn btn--danger" data-clear-demo>${I.trash} Apagar exemplos</button></div>` : ""}
+        ${LIVE ? "" : `<div class="card"><span class="export__icon">${I.reset}</span><h3>Repor demonstração</h3><p>Apaga as alterações feitas neste navegador e volta ao catálogo original.</p><button class="btn btn--danger" data-reset>${I.reset} Repor tudo</button></div>`}
       </div>`;
     $("#importFile").addEventListener("change", (e) => {
       const file = e.target.files[0]; if (!file) return;
@@ -681,7 +808,8 @@
           const data = JSON.parse(r.result);
           Object.keys(CATS).forEach(k => { if (Array.isArray(data[k])) db[k] = data[k]; });
           if (data.store) db.store = data.store;
-          if (Array.isArray(data.orders)) { orders = data.orders; saveOrders(); }
+          if (!LIVE && Array.isArray(data.orders)) { orders = data.orders; saveOrders(); }
+          if (LIVE && !confirm("Substituir o catálogo atual da loja por esta cópia?")) return;
           save("Cópia restaurada"); render();
         } catch { toast("Ficheiro inválido", true); }
       }; r.readAsText(file);
@@ -744,7 +872,7 @@ const PACKS = ${J(db.packs)};
     if (t.dataset.del) {
       const f = findProduct(t.dataset.del); if (!f) return;
       const removed = db[f.cat].splice(f.i, 1)[0];
-      ls.set("ss_catalog", db); closePanel(); render();
+      save(null); closePanel(); render();
       toast(`"${nameOf(removed)}" apagado`, false, () => { db[f.cat].splice(f.i, 0, removed); save("Produto recuperado"); render(); });
       return;
     }
@@ -752,14 +880,15 @@ const PACKS = ${J(db.packs)};
     if (t.dataset.estado) { state.estado = t.dataset.estado; return views.encomendas(); }
     if (t.dataset.order && !t.matches("[data-del-order]")) return openOrder(t.dataset.order);
     if (t.dataset.setEstado) {
-      const o = orders.find(x => x.n === +$("#panel").dataset.order); o.estado = t.dataset.setEstado; saveOrders();
+      const o = orders.find(x => x.n === +$("#panel").dataset.order); o.estado = t.dataset.setEstado; setOrderState(o);
       toast(`Encomenda #${o.n}: ${ESTADOS[o.estado]}`); openOrder(o.n); render(); return;
     }
     if (t.dataset.delOrder) {
-      if (confirm("Apagar esta encomenda?")) { orders = orders.filter(o => o.n !== +t.dataset.delOrder); saveOrders(); closePanel(); render(); }
+      if (confirm("Apagar esta encomenda?")) { deleteOrder(+t.dataset.delOrder).then(() => { closePanel(); render(); }); }
       return;
     }
     if (t.matches("[data-demo-orders]")) return demoOrders();
+    if (t.matches("[data-clear-demo]")) { if (confirm("Apagar todas as encomendas de exemplo?")) clearDemoOrders(); return; }
     if (t.dataset.export === "js") return exportJs();
     if (t.dataset.export === "json") { download(`shisha-store-copia-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ ...db, orders }, null, 2), "application/json"); return toast("Cópia descarregada"); }
     if (t.matches("[data-reset]")) {
@@ -787,7 +916,7 @@ const PACKS = ${J(db.packs)};
   $("#overlay").addEventListener("click", closePanel);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePanel(); });
   // a loja (noutro separador) pode registar encomendas novas
-  window.addEventListener("storage", (e) => { if (e.key === "ss_orders") { orders = ls.get("ss_orders", []); if (pinOk() && !$("#panel").classList.contains("is-open")) render(); } });
+  if (!LIVE) window.addEventListener("storage", (e) => { if (e.key === "ss_orders") { orders = ls.get("ss_orders", []); if (pinOk() && !$("#panel").classList.contains("is-open")) render(); } });
 
   let tt;
   function toast(msg, err = false, undo = null) {
@@ -797,5 +926,19 @@ const PACKS = ${J(db.packs)};
     t.classList.add("is-on"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("is-on"), undo ? 6000 : 2400);
   }
 
-  pinOk() ? showApp() : showLogin();
+  // formulários do painel nunca recarregam a página
+  document.addEventListener("submit", (e) => { if (e.target.id !== "loginForm") e.preventDefault(); });
+  // novas encomendas: atualiza a cada 30 segundos (modo real)
+  if (LIVE) setInterval(async () => {
+    if (!session || document.hidden || $("#panel").classList.contains("is-open")) return;
+    const before = orders.filter(o => o.estado === "nova").length;
+    await refreshOrders();
+    const now = orders.filter(o => o.estado === "nova").length;
+    if (now > before) toast(`🛍️ Nova encomenda! (${now} por confirmar)`);
+    if (["painel", "encomendas"].includes(route())) render();
+    else { $("#newOrders").textContent = now; $("#newOrders").hidden = !now; $("#newOrders2").textContent = now; $("#newOrders2").hidden = !now; }
+  }, 30000);
+  // arranque
+  if (LIVE) sb.auth.getSession().then(({ data }) => { session = data.session; session ? showApp() : showLogin(); });
+  else pinOk() ? showApp() : showLogin();
 })();

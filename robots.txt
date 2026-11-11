@@ -1,2 +1,6 @@
 User-agent: *
-Disallow: /
+Allow: /
+Disallow: /admin.html
+Disallow: /supabase/
+
+Sitemap: https://shishastoreamadora.pt/sitemap.xml
