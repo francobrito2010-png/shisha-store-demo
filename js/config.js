@@ -7,6 +7,6 @@
    Se ficar vazio, o site funciona em modo demonstração (dados do navegador).
    ========================================================= */
 window.SS_CONFIG = {
-  SUPABASE_URL: "",
-  SUPABASE_ANON_KEY: "",
+  SUPABASE_URL: "https://vvphwodoemybalvvloim.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_rp2pxHK_FU9EytBLWeDjvg_lvz2L1oo",   // chave publicável (segura no site)
 };
