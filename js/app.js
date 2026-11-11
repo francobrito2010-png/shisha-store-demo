@@ -98,125 +98,135 @@ SSDB.ready.then(() => {
      ========================================================= */
   const views = {};
 
-  /* ---------- INÍCIO (estilo HispaCachimba) ---------- */
+  /* ---------- INÍCIO (editável no painel → Página inicial) ---------- */
+  const tx = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const safeLink = (l) => "#/" + (/^[a-z0-9/_-]*$/i.test(l || "") ? (l || "") : "");
+  const safeImg = (u) => /^(https:\/\/|img\/|data:image\/(jpeg|png|webp);base64,)/i.test(u || "") ? String(u).replace(/["'<>\s]/g, "") : "";
+  const safeCor = (c, d = "#111111") => /^#[0-9a-f]{3,8}$/i.test(c || "") ? c : d;
+  const grad = (c, deg = 120) => `linear-gradient(${deg}deg, ${Art.shade(c, -50)} 0%, ${c} 55%, ${Art.shade(c, 60)} 100%)`;
+  function homeCfg() {
+    const h = STORE.home || {}, d = HOME_DEFAULT, arr = (k) => Array.isArray(h[k]) ? h[k] : d[k];
+    const secoes = Array.isArray(h.secoes) ? [...h.secoes] : [];
+    d.secoes.forEach(s => { if (!secoes.some(x => x.id === s.id)) secoes.push({ ...s }); });
+    return {
+      slides: arr("slides"), promos: arr("promos"), categorias: arr("categorias"), novidades: arr("novidades"),
+      faixa: { ...d.faixa, ...(h.faixa || {}) }, ambiente: { ...d.ambiente, ...(h.ambiente || {}) }, secoes,
+    };
+  }
+
   views.home = () => {
-    const slides = [
-      { kicker: "Nova chegada", titulo: "WOOKAH", sub: "Madeira artesanal · 60 cm. Já disponível na loja.", cta: "Ver shisha", href: "#/p/wookah-60", bg: "linear-gradient(120deg,#2b1a0e 0%,#6b4423 55%,#c08a4f 100%)", photo: "wookah-60" },
-      { kicker: "Representante oficial", titulo: "ADALYA", sub: "Os sabores mais pedidos de Portugal: Love 66, Lady Killer, Hawaii…", cta: "Ver essências", href: "#/essencias", bg: "#1a0a10", full: stock("tabaco") },
-      { kicker: "Carvão de coco", titulo: "COCO DALYA", sub: "Queima limpa e longa duração. Caixa de 1kg com 64 peças.", cta: "Ver carvão", href: "#/carvao", bg: "#0b0b0b", full: stock("carvaoFumo") },
-      { kicker: "Tudo incluído", titulo: "PACKS DESDE 75€", sub: "Shisha, mangueira, forno, carvão, boquilha 3D e 100g de sabor.", cta: "Ver packs", href: "#/packs", bg: "linear-gradient(120deg,#0b0b0b 0%,#262626 55%,#525252 100%)", photo: "pack-85" },
-      { kicker: "Amy Deluxe", titulo: "CARBONO", sub: "Acabamento em fibra de carbono · 45 cm · 80€", cta: "Comprar", href: "#/p/amy-carbono-45", bg: "linear-gradient(120deg,#0c1a2e 0%,#1e3a8a 55%,#60a5fa 100%)", photo: "amy-carbono-45" },
-    ];
-    const cats = [
-      { t: "Shishas", h: "#/shishas", n: SHISHAS.length, bg: "#f4ede4", photo: "amy-55-50" },
-      { t: "Essências", h: "#/essencias", n: ESSENCIAS.length, bg: "#fde2e4", src: stock("tabaco2", 600) },
-      { t: "Carvão", h: "#/carvao", n: CARVAO.length, bg: "#e7e5e4", src: stock("brasas", 600) },
-      { t: "Acessórios", h: "#/acessorios", n: ACESSORIOS.length, bg: "#e0f2fe", photo: "acc-paravento" },
-      { t: "Packs", h: "#/packs", n: PACKS.length, bg: "#ede9fe", photo: "pack-75" },
-    ];
-    const novidades = ["wookah-60", "adalya-ath-45", "amy-carbono-45", "crystalia-3s-50", "boss-50", "toro-25", "paname-35", "stars-55"].map(id => byId[id]);
-    const marquee = ["Novidades todas as semanas", "Levantamento na loja", "Pagamento seguro", "Atendimento ao cliente", "Representante Adalya", "Melhor preço do mercado"];
+    const H = homeCfg();
+    const slides = H.slides.filter(s => s.ativo !== false);
+    const promos = H.promos.filter(s => s.ativo !== false);
+    const counts = { shishas: SHISHAS.length, essencias: ESSENCIAS.length, carvao: CARVAO.length, acessorios: ACESSORIOS.length, packs: PACKS.length };
+    const DUR = { lenta: "60s", normal: "38s", rapida: "22s" };
+
+    const slideHTML = (s, i) => {
+      const cor = safeCor(s.cor), img = safeImg(s.img), full = s.modo === "cheio" && img;
+      return `<div class="slide ${i === 0 ? "is-active" : ""} ${full ? "slide--full" : ""}" style="background:${full ? cor : grad(cor)}">
+        ${full ? `<img class="slide__bg" src="${img}" alt="" ${i ? 'loading="lazy"' : ""}>` : ""}
+        <div class="slide__text">
+          ${s.kicker ? `<span class="slide__kicker">${tx(s.kicker)}</span>` : ""}
+          <h1 class="slide__title">${tx(s.titulo)}</h1>
+          ${s.sub ? `<p>${tx(s.sub)}</p>` : ""}
+          ${s.cta ? `<a class="btn btn--light" href="${safeLink(s.link)}">${tx(s.cta)}</a>` : ""}
+        </div>
+        ${!full && img ? `<div class="slide__photo"><img src="${img}" alt="${tx(s.titulo)}" ${i ? 'loading="lazy"' : ""}></div>` : ""}
+      </div>`;
+    };
+    const promoHTML = (p) => {
+      const cor = safeCor(p.cor), img = safeImg(p.img), full = p.modo === "cheio" && img;
+      return `<a class="promo ${full ? "promo--full" : ""}" href="${safeLink(p.link)}" style="background:${full ? cor : `linear-gradient(135deg, ${cor}, ${Art.shade(cor, 70)})`}">
+        ${full ? `<img class="promo__bg" src="${img}" alt="">` : ""}
+        <div>${p.kicker ? `<span class="promo__kicker">${tx(p.kicker)}</span>` : ""}<strong>${tx(p.titulo)}</strong>${p.cta ? `<span class="promo__link">${tx(p.cta)}</span>` : ""}</div>
+        ${!full && img ? `<div class="promo__photo"><img src="${img}" alt="" loading="lazy"></div>` : ""}
+      </a>`;
+    };
+
+    const S = {
+      categorias: () => `
+        <section class="container section">
+          <h2 class="h2">Explora por categoria</h2>
+          <div class="cats">${H.categorias.map(c => { const img = safeImg(c.img); return `
+            <a class="cat" href="${safeLink(c.cat)}" style="--bg:${safeCor(c.cor, "#f4ede4")}">
+              <div class="cat__art ${img ? "has-photo" : ""}">${img ? `<img src="${img}" alt="${tx(c.titulo)}" loading="lazy">` : Art.pack("#b08d57")}</div>
+              <div class="cat__label"><strong>${tx(c.titulo)}</strong><span>${counts[c.cat] ?? 0} produtos</span></div>
+            </a>`; }).join("")}</div>
+        </section>`,
+      garantias: () => `
+        <section class="container perks">
+          ${[
+            [icons.store, "Levantamento na loja", STORE.cidade ? `${tx(STORE.cidade)}` : ""],
+            [icons.lock, "Pagamento seguro", "MB Way, cartão e dinheiro"],
+            [icons.truck, "Novidades semanais", "Stock sempre renovado"],
+            [icons.chat, "Atendimento ao cliente", "Seg–Dom · WhatsApp"],
+          ].map(([i, t, s]) => `<div class="perk"><span class="perk__icon">${i}</span><div><strong>${t}</strong><span>${s}</span></div></div>`).join("")}
+        </section>`,
+      novidades: () => { const list = H.novidades.map(id => byId[id]).filter(Boolean); return list.length ? `
+        <section class="container section">
+          <div class="section__head"><h2 class="h2">Novidades</h2><a class="link" href="#/shishas">Ver todas as shishas →</a></div>
+          <div class="grid grid--4">${list.map(card).join("")}</div>
+        </section>` : ""; },
+      essencias: () => ESSENCIAS.length ? `
+        <section class="ess-band">
+          <div class="container section">
+            <div class="section__head">
+              <div><span class="eyebrow">Representante oficial em Portugal</span><h2 class="h2">Essências Adalya</h2></div>
+              <a class="link" href="#/essencias">Ver todos os sabores →</a>
+            </div>
+            <div class="grid grid--4">${ESSENCIAS.slice(0, 4).map(essCard).join("")}</div>
+          </div>
+        </section>` : "",
+      packs: () => PACKS.length ? `
+        <section class="container section">
+          <div class="section__head"><h2 class="h2">Packs completos</h2><a class="link" href="#/packs">Ver packs →</a></div>
+          ${packsHTML()}
+        </section>` : "",
+      ambiente: () => { const a = H.ambiente, t = (a.tiles || []).slice(0, 2); return `
+        <section class="vibe">
+          <div class="vibe__grid">
+            <a class="vibe__tile vibe__tile--big" href="${safeLink(a.link)}">
+              ${safeImg(a.img) ? `<img src="${safeImg(a.img)}" alt="" loading="lazy">` : ""}
+              <div class="vibe__text">
+                ${a.kicker ? `<span class="eyebrow eyebrow--light">${tx(a.kicker)}</span>` : ""}
+                <h2>${tx(a.titulo)}</h2>
+                ${a.texto ? `<p>${tx(a.texto)}</p>` : ""}
+                ${a.cta ? `<span class="btn btn--light">${tx(a.cta)}</span>` : ""}
+              </div>
+            </a>
+            ${t.map(x => `<a class="vibe__tile" href="${safeLink(x.link)}">
+              ${safeImg(x.img) ? `<img src="${safeImg(x.img)}" alt="" loading="lazy">` : ""}
+              <div class="vibe__text vibe__text--sm"><h3>${tx(x.titulo)}</h3>${x.sub ? `<span>${tx(x.sub)}</span>` : ""}</div>
+            </a>`).join("")}
+          </div>
+        </section>`; },
+      marcas: () => `
+        <section class="container section">
+          <div class="section__head"><h2 class="h2">Compra por marca</h2></div>
+          ${brandRow()}
+        </section>`,
+      loja: () => lojaHTML(),
+    };
+
+    const faixa = H.faixa.ativo !== false && (H.faixa.itens || []).length ? `
+      <div class="marquee" aria-hidden="true"><div class="marquee__track" style="--dur:${DUR[H.faixa.velocidade] || "38s"}">
+        ${[...H.faixa.itens, ...H.faixa.itens, ...H.faixa.itens].map(t => `<span>${tx(t)}</span><i>✦</i>`).join("")}
+      </div></div>` : "";
 
     return `
-    <section class="hero container">
-      <div class="slider" id="slider">
-        ${slides.map((s, i) => `
-          <div class="slide ${i === 0 ? "is-active" : ""} ${s.full ? "slide--full" : ""}" style="background:${s.bg}">
-            ${s.full ? `<img class="slide__bg" src="${s.full}" alt="" ${i ? 'loading="lazy"' : ""}>` : ""}
-            <div class="slide__text">
-              <span class="slide__kicker">${s.kicker}</span>
-              <h1 class="slide__title">${s.titulo}</h1>
-              <p>${s.sub}</p>
-              <a class="btn btn--light" href="${s.href}">${s.cta}</a>
-            </div>
-            ${s.photo ? `<div class="slide__photo">${photo(s.photo, s.titulo)}</div>` : s.art ? `<div class="slide__art">${s.art}</div>` : ""}
-          </div>`).join("")}
+    ${slides.length || promos.length ? `
+    <section class="hero container ${promos.length ? "" : "hero--solo"}">
+      ${slides.length ? `<div class="slider" id="slider">
+        ${slides.map(slideHTML).join("")}
+        ${slides.length > 1 ? `
         <button class="slider__arrow slider__arrow--prev" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button>
         <button class="slider__arrow slider__arrow--next" aria-label="Seguinte"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
-        <div class="slider__dots">${slides.map((_, i) => `<button class="${i === 0 ? "is-active" : ""}" data-dot="${i}" aria-label="Slide ${i + 1}"></button>`).join("")}</div>
-      </div>
-      <div class="promos">
-        <a class="promo promo--full" href="#/p/acc-kaloud" style="background:#0b0b0b">
-          <img class="promo__bg" src="${stock("cabecote", 900)}" alt="">
-          <div><span class="promo__kicker">Novo preço</span><strong>Kaloud a 10€</strong><span class="promo__link">Comprar →</span></div>
-        </a>
-        <a class="promo" href="#/shishas" style="background:linear-gradient(135deg,#4c1d95,#c026d3)">
-          <div><span class="promo__kicker">Cristal</span><strong>Crystalia desde 60€</strong><span class="promo__link">Ver modelos →</span></div>
-          <div class="promo__photo">${photo("crystalia-3s-50", "Crystalia")}</div>
-        </a>
-      </div>
-    </section>
-
-    <div class="marquee" aria-hidden="true"><div class="marquee__track">
-      ${[...marquee, ...marquee, ...marquee].map(t => `<span>${t}</span><i>✦</i>`).join("")}
-    </div></div>
-
-    <section class="container section">
-      <h2 class="h2">Explora por categoria</h2>
-      <div class="cats">${cats.map(c => `
-        <a class="cat" href="${c.h}" style="--bg:${c.bg}">
-          <div class="cat__art ${c.photo || c.src ? "has-photo" : ""}">${c.photo ? photo(c.photo, c.t) : c.src ? `<img src="${c.src}" alt="${c.t}" loading="lazy">` : c.art}</div>
-          <div class="cat__label"><strong>${c.t}</strong><span>${c.n} produtos</span></div>
-        </a>`).join("")}</div>
-    </section>
-
-    <section class="container perks">
-      ${[
-        [icons.store, "Levantamento na loja", "Venda Nova, Amadora"],
-        [icons.lock, "Pagamento seguro", "MB Way, cartão e dinheiro"],
-        [icons.truck, "Novidades semanais", "Stock sempre renovado"],
-        [icons.chat, "Atendimento ao cliente", "Seg–Dom · WhatsApp"],
-      ].map(([i, t, s]) => `<div class="perk"><span class="perk__icon">${i}</span><div><strong>${t}</strong><span>${s}</span></div></div>`).join("")}
-    </section>
-
-    <section class="container section">
-      <div class="section__head"><h2 class="h2">Novidades</h2><a class="link" href="#/shishas">Ver todas as shishas →</a></div>
-      <div class="grid grid--4">${novidades.map(card).join("")}</div>
-    </section>
-
-    <section class="ess-band">
-      <div class="container section">
-        <div class="section__head">
-          <div><span class="eyebrow">Representante oficial em Portugal</span><h2 class="h2">Essências Adalya</h2></div>
-          <a class="link" href="#/essencias">Ver todos os sabores →</a>
-        </div>
-        <div class="grid grid--4">${ESSENCIAS.slice(0, 4).map(essCard).join("")}</div>
-      </div>
-    </section>
-
-    <section class="container section">
-      <div class="section__head"><h2 class="h2">Packs completos</h2><a class="link" href="#/packs">Ver packs →</a></div>
-      ${packsHTML()}
-    </section>
-
-    <section class="vibe">
-      <div class="vibe__grid">
-        <a class="vibe__tile vibe__tile--big" href="#/packs">
-          <img src="${stock("loungeNeon", 1400)}" alt="" loading="lazy">
-          <div class="vibe__text">
-            <span class="eyebrow eyebrow--light">A tua sessão, ao teu estilo</span>
-            <h2>Monta a sessão perfeita</h2>
-            <p>Shisha, sabor, carvão e acessórios — tudo num só lugar, com aconselhamento de quem percebe.</p>
-            <span class="btn btn--light">Ver packs</span>
-          </div>
-        </a>
-        <a class="vibe__tile" href="#/essencias">
-          <img src="${stock("preparar", 800)}" alt="" loading="lazy">
-          <div class="vibe__text vibe__text--sm"><h3>Sabores Adalya</h3><span>Descobrir →</span></div>
-        </a>
-        <a class="vibe__tile" href="#/shishas">
-          <img src="${stock("loungeVermelho", 800)}" alt="" loading="lazy">
-          <div class="vibe__text vibe__text--sm"><h3>Shishas premium</h3><span>Ver modelos →</span></div>
-        </a>
-      </div>
-    </section>
-
-    <section class="container section">
-      <div class="section__head"><h2 class="h2">Compra por marca</h2></div>
-      ${brandRow()}
-    </section>
-
-    ${lojaHTML()}
+        <div class="slider__dots">${slides.map((_, i) => `<button class="${i === 0 ? "is-active" : ""}" data-dot="${i}" aria-label="Slide ${i + 1}"></button>`).join("")}</div>` : ""}
+      </div>` : ""}
+      ${promos.length ? `<div class="promos">${promos.slice(0, 2).map(promoHTML).join("")}</div>` : ""}
+    </section>` : ""}
+    ${faixa}
+    ${H.secoes.filter(s => s.ativo !== false && S[s.id]).map(s => S[s.id]()).join("")}
     `;
   };
 
@@ -487,8 +497,9 @@ SSDB.ready.then(() => {
   /* ---------- Slider ---------- */
   let sliderTimer;
   function initSlider() {
-    const el = $("#slider"); if (!el) return;
+    const el = $("#slider"); clearInterval(sliderTimer); if (!el) return;
     const slides = $$(".slide", el), dots = $$("[data-dot]", el);
+    if (slides.length < 2) return;
     let i = 0;
     const go = (n) => {
       i = (n + slides.length) % slides.length;

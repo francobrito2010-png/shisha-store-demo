@@ -65,17 +65,29 @@
     if (!ord.error) orders = ord.data.map(o => ({ n: o.n, data: o.created_at, items: o.items, total: Number(o.total), estado: o.estado, canal: o.canal, exemplo: o.exemplo }));
   }
   const publicStore = () => { const s = { ...db.store }; delete s.pin; return s; };
+  async function uploadOne(dataUrl, name) {
+    const blob = await (await fetch(dataUrl)).blob();
+    const ext = blob.type === "image/webp" ? "webp" : "jpg";
+    const path = `${name}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.${ext}`;
+    // nome único + cache de 1 ano: o navegador e a CDN guardam a foto e a loja abre mais rápido
+    const up = await sb.storage.from("produtos").upload(path, blob, { contentType: blob.type || "image/jpeg", cacheControl: "31536000", upsert: false });
+    if (up.error) throw up.error;
+    return sb.storage.from("produtos").getPublicUrl(path).data.publicUrl;
+  }
   async function uploadPhotos() {
     for (const p of allProducts().map(x => x.p)) {
-      if (!p.img || !p.img.startsWith("data:")) continue;
-      const blob = await (await fetch(p.img)).blob();
-      const ext = blob.type === "image/webp" ? "webp" : "jpg";
-      const path = `${p.id}-${Date.now()}.${ext}`;
-      // nome único + cache de 1 ano: o navegador e a CDN guardam a foto e a loja abre mais rápido
-      const up = await sb.storage.from("produtos").upload(path, blob, { contentType: blob.type || "image/jpeg", cacheControl: "31536000", upsert: false });
-      if (up.error) throw up.error;
-      p.img = sb.storage.from("produtos").getPublicUrl(path).data.publicUrl;
+      if (p.img && p.img.startsWith("data:")) p.img = await uploadOne(p.img, p.id);
     }
+    // fotos da página inicial (carrossel, banners, categorias, ambiente)
+    const walk = async (o) => {
+      if (Array.isArray(o)) { for (const x of o) await walk(x); return; }
+      if (!o || typeof o !== "object") return;
+      for (const [k, v] of Object.entries(o)) {
+        if (k === "img" && typeof v === "string" && v.startsWith("data:")) o[k] = await uploadOne(v, "inicio");
+        else if (v && typeof v === "object") await walk(v);
+      }
+    };
+    if (db.store.home) await walk(db.store.home);
   }
   async function syncRemote() {
     await uploadPhotos();
@@ -253,6 +265,7 @@
         <a href="#/produtos" class="quick__item"><span class="quick__ic" style="background:#fdf3e1;color:#8c6d3f">${I.euro}</span><b>Mudar preços e stock</b><small>Toca no preço para o alterar</small></a>
         <a href="#/encomendas" class="quick__item"><span class="quick__ic" style="background:#eff6ff;color:#2563eb">${I.bag}</span><b>Ver encomendas</b><small>${novas ? `<span class="dot-new"></span>${novas} nova${novas > 1 ? "s" : ""} à espera` : "Nenhuma nova"}</small></a>
         <a href="#/loja" class="quick__item"><span class="quick__ic" style="background:#f0fdf4;color:#16a34a">${I.clock}</span><b>Horário e contactos</b><small>Morada, telefone e avisos</small></a>
+        <a href="#/inicio" class="quick__item"><span class="quick__ic" style="background:#f3e8ff;color:#7c3aed">🖼️</span><b>Página inicial</b><small>Fotos do topo, faixa e categorias</small></a>
       </div>
       <h2 class="h-sec">Como vai a loja</h2>
       <div class="kpis">
@@ -668,6 +681,183 @@
     closePanel(); render();
   }
 
+  /* ---------- PÁGINA INICIAL ---------- */
+  const SEC_LABEL = {
+    categorias: ["🗂️", "Explora por categoria"], garantias: ["✅", "Garantias (levantamento, pagamento…)"], novidades: ["✨", "Novidades"],
+    essencias: ["🍉", "Essências Adalya"], packs: ["📦", "Packs completos"], ambiente: ["🌆", "Monta a sessão perfeita"],
+    marcas: ["🏷️", "Compra por marca"], loja: ["📍", "Loja física e mapa"],
+  };
+  const LINK_PAGES = [["", "Início"], ["shishas", "Shishas"], ["essencias", "Essências"], ["carvao", "Carvão"], ["acessorios", "Acessórios"], ["packs", "Packs"], ["loja", "Loja física"]];
+  const shadeHex = (hex, amt) => { const n = parseInt((hex || "#111111").slice(1), 16) || 0; const c = (v) => Math.max(0, Math.min(255, v + amt)); return "#" + ((c(n >> 16) << 16) | (c((n >> 8) & 255) << 8) | c(n & 255)).toString(16).padStart(6, "0"); };
+  const gradA = (c) => `linear-gradient(120deg, ${shadeHex(c, -50)} 0%, ${c} 55%, ${shadeHex(c, 60)} 100%)`;
+  function ensureHome() {
+    const d = clone(HOME_DEFAULT), h = db.store.home || {};
+    const secoes = Array.isArray(h.secoes) ? h.secoes : [];
+    d.secoes.forEach(s => { if (!secoes.some(x => x.id === s.id)) secoes.push(s); });
+    db.store.home = {
+      slides: h.slides || d.slides, promos: h.promos || d.promos, categorias: h.categorias || d.categorias,
+      novidades: h.novidades || d.novidades, faixa: { ...d.faixa, ...(h.faixa || {}) }, ambiente: { ...d.ambiente, ...(h.ambiente || {}) }, secoes,
+    };
+    return db.store.home;
+  }
+  const getPath = (o, p) => p.split(".").reduce((x, k) => x == null ? x : x[k], o);
+  const setPath = (o, p, v) => { const ks = p.split("."), last = ks.pop(); const t = ks.reduce((x, k) => x[k], o); t[last] = v; };
+  // imagem grande de um produto (para usar na página inicial)
+  function imgBig(p) {
+    if (p.img) return p.img;
+    if (FOTOS.includes(p.id)) return `img/${p.id}.jpg`;
+    if (FOTOS_LIVRES[p.id]) { const [id, crop] = FOTOS_LIVRES[p.id].split("|"); return `https://images.unsplash.com/${id}?w=1400&q=75&auto=format&fit=crop${crop ? "&crop=" + crop : ""}`; }
+    if (STOCK_IMG[p.id]) return stock(STOCK_IMG[p.id], 1400);
+    return "";
+  }
+  function linkSelect(path, val) {
+    return `<select class="select" data-h="${path}">
+      <optgroup label="Páginas">${LINK_PAGES.map(([v, l]) => `<option value="${v}" ${val === v ? "selected" : ""}>${l}</option>`).join("")}</optgroup>
+      ${Object.entries(CATS).map(([cat, c]) => `<optgroup label="${c.label}">${db[cat].map(p => `<option value="p/${esc(p.id)}" ${val === "p/" + p.id ? "selected" : ""}>${esc(nameOf(p))}</option>`).join("")}</optgroup>`).join("")}
+    </select>`;
+  }
+  function photoCtl(path, img) {
+    return `<div class="hphoto">
+      <div class="hphoto__prev">${img ? `<img src="${esc(img)}" alt="">` : "📷"}</div>
+      <div class="hphoto__btns">
+        <label class="act" style="cursor:pointer">📷 <span>${img ? "Trocar foto" : "Carregar foto"}</span><input type="file" accept="image/*" data-hfile="${path}" hidden></label>
+        <button type="button" class="act" data-hpick="${path}">🛍️ <span>Foto de um produto</span></button>
+        ${img ? `<button type="button" class="act act--del" data-hset="${path}" data-val="">${I.trash}<span>Tirar</span></button>` : ""}
+      </div>
+    </div>`;
+  }
+  const moveBtns = (list, i, n) => `
+    <button type="button" class="act" data-hmove="${list}:${i}:-1" ${i === 0 ? "disabled" : ""} title="Subir">↑</button>
+    <button type="button" class="act" data-hmove="${list}:${i}:1" ${i === n - 1 ? "disabled" : ""} title="Descer">↓</button>`;
+
+  function bannerCard(list, s, i, n, opts = {}) {
+    const p = `${list}.${i}`, full = s.modo === "cheio" && s.img;
+    const bg = full ? s.cor : gradA(s.cor || "#111111");
+    return `<div class="card hcard ${s.ativo === false ? "is-off" : ""}">
+      <div class="hprev ${opts.small ? "hprev--sm" : ""}" style="background:${esc(bg)}">
+        ${s.img ? `<img class="${full ? "hprev__bg" : "hprev__side"}" src="${esc(s.img)}" alt="">` : ""}
+        <div class="hprev__text">${s.kicker ? `<small>${esc(s.kicker)}</small>` : ""}<b>${esc(s.titulo || "Sem título")}</b>${s.sub ? `<span>${esc(s.sub)}</span>` : ""}${s.cta ? `<i>${esc(s.cta)}</i>` : ""}</div>
+        ${s.ativo === false ? `<span class="hprev__off">Escondido</span>` : ""}
+      </div>
+      <div class="hcard__body">
+        <div class="hcard__top">
+          <strong>${opts.label} ${i + 1}</strong>
+          <div class="actions">${moveBtns(list, i, n)}<button type="button" class="act act--del" data-hdel="${list}:${i}">${I.trash}<span>Apagar</span></button></div>
+        </div>
+        <label class="switch"><input type="checkbox" data-h="${p}.ativo" ${s.ativo === false ? "" : "checked"}><i></i>Mostrar na loja</label>
+        ${photoCtl(`${p}.img`, s.img)}
+        <div class="row">
+          <div class="field"><label>Texto pequeno (em cima)</label><input data-h="${p}.kicker" value="${esc(s.kicker || "")}" maxlength="40" placeholder="Ex.: Nova chegada"></div>
+          <div class="field"><label>Título</label><input data-h="${p}.titulo" value="${esc(s.titulo || "")}" maxlength="40" placeholder="Ex.: WOOKAH"></div>
+        </div>
+        ${opts.sub ? `<div class="field"><label>Frase</label><input data-h="${p}.sub" value="${esc(s.sub || "")}" maxlength="110" placeholder="Uma frase curta"></div>` : ""}
+        <div class="row">
+          <div class="field"><label>Texto do botão</label><input data-h="${p}.cta" value="${esc(s.cta || "")}" maxlength="24" placeholder="Ex.: Ver shisha"></div>
+          <div class="field"><label>Ao tocar, abre…</label>${linkSelect(`${p}.link`, s.link || "")}</div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Como mostrar a foto</label><select class="select" data-h="${p}.modo"><option value="lado" ${s.modo !== "cheio" ? "selected" : ""}>Foto ao lado do texto</option><option value="cheio" ${s.modo === "cheio" ? "selected" : ""}>Foto a ocupar tudo</option></select></div>
+          <div class="field"><label>Cor de fundo</label><div class="color"><input type="color" data-h="${p}.cor" value="${esc(s.cor || "#111111")}"><span class="muted">${esc(s.cor || "")}</span></div></div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  views.inicio = () => {
+    const H = ensureHome(), tab = state.homeTab || "carrossel";
+    setHeader("Página inicial", "Muda as fotos, textos e secções da página principal da loja.", `<a class="btn btn--ghost" href="./" target="_blank">${I.eye} Ver a loja</a>`);
+    const TABS = [["carrossel", "🖼️ Carrossel"], ["banners", "📢 Banners"], ["faixa", "🎞️ Faixa"], ["categorias", "🗂️ Categorias"], ["secoes", "⚙️ Secções"]];
+    let body = "";
+    if (tab === "carrossel") body = `
+      <p class="muted hintline">As imagens grandes do topo. Passam sozinhas a cada 5 segundos.</p>
+      <div class="hlist">${H.slides.map((s, i) => bannerCard("slides", s, i, H.slides.length, { label: "Imagem", sub: true })).join("")}</div>
+      <button class="btn btn--dark" data-hadd="slides">${I.plus} Adicionar imagem ao carrossel</button>`;
+    if (tab === "banners") body = `
+      <p class="muted hintline">Os 2 anúncios à direita do carrossel (no telemóvel aparecem por baixo).</p>
+      <div class="hlist">${H.promos.map((s, i) => bannerCard("promos", s, i, H.promos.length, { label: "Banner", small: true })).join("")}</div>
+      ${H.promos.length < 2 ? `<button class="btn btn--dark" data-hadd="promos">${I.plus} Adicionar banner</button>` : `<p class="muted" style="font-size:12.5px">Máximo 2 banners. Apaga um para adicionar outro.</p>`}`;
+    if (tab === "faixa") body = `
+      <div class="card"><div class="card__body form">
+        <div class="hmarquee"><div style="--dur:${{ lenta: "60s", normal: "38s", rapida: "22s" }[H.faixa.velocidade] || "38s"}">${[...H.faixa.itens, ...H.faixa.itens].map(t => `<span>${esc(t)}</span><i>✦</i>`).join("")}</div></div>
+        <div class="row">
+          <label class="switch"><input type="checkbox" data-h="faixa.ativo" ${H.faixa.ativo === false ? "" : "checked"}><i></i>Mostrar a faixa na loja</label>
+          <div class="field"><label>Velocidade</label><select class="select" data-h="faixa.velocidade">${[["lenta", "Lenta"], ["normal", "Normal"], ["rapida", "Rápida"]].map(([v, l]) => `<option value="${v}" ${H.faixa.velocidade === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        </div>
+        <div class="section-title">Frases</div>
+        ${H.faixa.itens.map((t, i) => `<div class="hrow"><input data-h="faixa.itens.${i}" value="${esc(t)}" maxlength="40"><div class="actions">${moveBtns("faixa.itens", i, H.faixa.itens.length)}<button type="button" class="act act--del" data-hdel="faixa.itens:${i}">${I.trash}</button></div></div>`).join("")}
+        <button class="btn btn--ghost btn--sm" data-hadd="faixa.itens" style="justify-self:start">${I.plus} Adicionar frase</button>
+      </div></div>`;
+    if (tab === "categorias") body = `
+      <p class="muted hintline">Os quadrados de "Explora por categoria". Toca em "Trocar foto" para mudar a imagem.</p>
+      <div class="hcats">${H.categorias.map((c, i) => `
+        <div class="card hcard">
+          <div class="hcat" style="--bg:${esc(c.cor || "#f4ede4")}">${c.img ? `<img src="${esc(c.img)}" alt="">` : "📦"}<b>${esc(c.titulo)}</b></div>
+          <div class="hcard__body">
+            ${photoCtl(`categorias.${i}.img`, c.img)}
+            <div class="row">
+              <div class="field"><label>Nome</label><input data-h="categorias.${i}.titulo" value="${esc(c.titulo)}" maxlength="24"></div>
+              <div class="field"><label>Cor de fundo</label><div class="color"><input type="color" data-h="categorias.${i}.cor" value="${esc(c.cor || "#f4ede4")}"></div></div>
+            </div>
+            <div class="actions" style="justify-content:flex-start">${moveBtns("categorias", i, H.categorias.length)}</div>
+          </div>
+        </div>`).join("")}</div>`;
+    if (tab === "secoes") {
+      const A = H.ambiente, nov = new Set(H.novidades);
+      body = `
+      <div class="two">
+        <div class="card"><div class="card__head"><h3>Secções da página e ordem</h3></div><div class="card__body">
+          <p class="muted" style="margin:0 0 10px;font-size:13px">O carrossel, os banners e a faixa ficam sempre no topo.</p>
+          ${H.secoes.map((s, i) => `<div class="hrow hsec ${s.ativo === false ? "is-off" : ""}"><span>${SEC_LABEL[s.id]?.[0] || ""} ${SEC_LABEL[s.id]?.[1] || s.id}</span>
+            <div class="actions">${moveBtns("secoes", i, H.secoes.length)}<label class="switch"><input type="checkbox" data-h="secoes.${i}.ativo" ${s.ativo === false ? "" : "checked"}><i></i></label></div></div>`).join("")}
+        </div></div>
+        <div class="card"><div class="card__head"><h3>✨ Produtos em "Novidades"</h3><span class="muted">${nov.size} escolhidos</span></div><div class="card__body">
+          <p class="muted" style="margin:0 0 10px;font-size:13px">Escolhe 4 ou 8 para ficar bonito.</p>
+          <div class="hnov">${allProducts().filter(({ cat }) => cat !== "packs").map(({ p }) => `<label class="hnov__item ${nov.has(p.id) ? "is-on" : ""}"><input type="checkbox" data-hnov="${esc(p.id)}" ${nov.has(p.id) ? "checked" : ""}>${thumb(p)}<span>${esc(nameOf(p))}</span></label>`).join("")}</div>
+        </div></div>
+      </div>
+      <div class="card" style="margin-top:16px"><div class="card__head"><h3>🌆 "Monta a sessão perfeita"</h3></div><div class="card__body form">
+        ${photoCtl("ambiente.img", A.img)}
+        <div class="row">
+          <div class="field"><label>Texto pequeno</label><input data-h="ambiente.kicker" value="${esc(A.kicker || "")}" maxlength="40"></div>
+          <div class="field"><label>Título</label><input data-h="ambiente.titulo" value="${esc(A.titulo || "")}" maxlength="40"></div>
+        </div>
+        <div class="field"><label>Texto</label><input data-h="ambiente.texto" value="${esc(A.texto || "")}" maxlength="140"></div>
+        <div class="row">
+          <div class="field"><label>Texto do botão</label><input data-h="ambiente.cta" value="${esc(A.cta || "")}" maxlength="24"></div>
+          <div class="field"><label>Ao tocar, abre…</label>${linkSelect("ambiente.link", A.link || "")}</div>
+        </div>
+        ${(A.tiles || []).map((t, i) => `
+          <div class="section-title">Quadrado pequeno ${i + 1}</div>
+          ${photoCtl(`ambiente.tiles.${i}.img`, t.img)}
+          <div class="row--3 row">
+            <div class="field"><label>Título</label><input data-h="ambiente.tiles.${i}.titulo" value="${esc(t.titulo || "")}" maxlength="30"></div>
+            <div class="field"><label>Texto</label><input data-h="ambiente.tiles.${i}.sub" value="${esc(t.sub || "")}" maxlength="30"></div>
+            <div class="field"><label>Abre…</label>${linkSelect(`ambiente.tiles.${i}.link`, t.link || "")}</div>
+          </div>`).join("")}
+      </div></div>`;
+    }
+    $("#view").innerHTML = `
+      <div class="toolbar"><div class="tabs">${TABS.map(([k, l]) => `<button data-htab="${k}" class="${tab === k ? "is-on" : ""}">${l}</button>`).join("")}</div>
+        <button class="btn btn--ghost btn--sm" data-hreset style="margin-left:auto">${I.reset} Repor o desenho original</button></div>
+      ${body}`;
+  };
+  function redrawHome() { const y = window.scrollY; views.inicio(); window.scrollTo(0, y); }
+  function homeSave(msg = "Página inicial atualizada") { save(msg); redrawHome(); }
+  function openHomePicker(path) {
+    $("#panelTitle").textContent = "Escolher foto";
+    const items = allProducts().map(({ p }) => ({ p, src: imgBig(p) })).filter(x => x.src);
+    const amb = Object.keys(STOCK).map(k => stock(k, 1400));
+    $("#panelBody").innerHTML = `
+      <label class="search" style="margin-bottom:12px">${I.search}<input id="hpq" type="search" placeholder="Procurar produto…"></label>
+      <div class="hpick" id="hpickList">${items.map(({ p, src }) => `<button type="button" class="hpick__item" data-hpicked="${esc(src)}" data-name="${esc(nameOf(p).toLowerCase())}"><img src="${esc(src.includes("unsplash") ? src.replace("w=1400", "w=300") : src)}" alt="" loading="lazy"><span>${esc(nameOf(p))}</span></button>`).join("")}</div>
+      <div class="section-title" style="margin:18px 0 8px">Fotos de ambiente</div>
+      <div class="hpick">${amb.map(src => `<button type="button" class="hpick__item" data-hpicked="${esc(src)}" data-name=""><img src="${esc(src.replace("w=1400", "w=300"))}" alt="" loading="lazy"></button>`).join("")}</div>`;
+    $("#panelFoot").innerHTML = `<button class="btn btn--ghost" data-close>Cancelar</button>`;
+    $("#panel").dataset.hpath = path;
+    $("#panel").classList.add("is-open"); $("#overlay").classList.add("is-on");
+    $("#hpq").addEventListener("input", (e) => { const q = e.target.value.trim().toLowerCase(); $$("#hpickList .hpick__item").forEach(b => b.hidden = q && !b.dataset.name.includes(q)); });
+  }
+
   /* ---------- ENCOMENDAS ---------- */
   views.encomendas = () => {
     setHeader("Encomendas", "Pedidos feitos no carrinho da loja e enviados por WhatsApp.", `<button class="btn btn--ghost" data-demo-orders>${I.plus} Encomendas de exemplo</button>`);
@@ -864,6 +1054,34 @@ const PACKS = ${J(db.packs)};
     if (t.dataset.dup) return openEditor(t.dataset.dup, true);
     if (t.dataset.price) return editPrice(t);
     if (t.matches("[data-pack-new]")) return openPackEditor();
+    // --- Página inicial ---
+    if (t.dataset.htab) { state.homeTab = t.dataset.htab; return views.inicio(); }
+    if (t.dataset.hpick) return openHomePicker(t.dataset.hpick);
+    if (t.dataset.hpicked != null) { setPath(ensureHome(), $("#panel").dataset.hpath, t.dataset.hpicked); closePanel(); return homeSave("Foto atualizada"); }
+    if (t.dataset.hset) { setPath(ensureHome(), t.dataset.hset, t.dataset.val || ""); return homeSave("Foto removida"); }
+    if (t.dataset.hmove) {
+      const [list, i, dir] = t.dataset.hmove.split(":"), arr = getPath(ensureHome(), list), j = +i + +dir;
+      if (j < 0 || j >= arr.length) return;
+      [arr[+i], arr[j]] = [arr[j], arr[+i]]; return homeSave("Ordem atualizada");
+    }
+    if (t.dataset.hdel) {
+      const [list, i] = t.dataset.hdel.split(":"), arr = getPath(ensureHome(), list), removed = arr.splice(+i, 1)[0];
+      save(null); redrawHome();
+      toast("Apagado", false, () => { getPath(ensureHome(), list).splice(+i, 0, removed); homeSave("Recuperado"); });
+      return;
+    }
+    if (t.dataset.hadd) {
+      const arr = getPath(ensureHome(), t.dataset.hadd);
+      if (t.dataset.hadd === "faixa.itens") arr.push("Nova frase");
+      else arr.push({ ativo: true, kicker: "Novidade", titulo: "TÍTULO", ...(t.dataset.hadd === "slides" ? { sub: "Escreve aqui uma frase curta." } : {}), cta: "Ver mais", link: "shishas", img: "", modo: "lado", cor: "#262626" });
+      homeSave("Adicionado — agora escolhe a foto e os textos");
+      setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }), 50);
+      return;
+    }
+    if (t.matches("[data-hreset]")) {
+      if (confirm("Voltar a página inicial ao desenho original? As fotos e textos que mudaste aqui serão substituídos.")) { delete db.store.home; ensureHome(); homeSave("Página inicial reposta"); }
+      return;
+    }
     if (t.id === "savePack") return savePack();
     if (t.dataset.pkAdd) {
       const f = findProduct(t.dataset.pkAdd);
@@ -916,6 +1134,23 @@ const PACKS = ${J(db.packs)};
     }
     if (t.id === "fstock") drawRows();
     if (t.dataset.pkSize != null) { editing.p.itens[+t.dataset.pkSize].size = t.value; drawPackChosen(); drawPackSum(); }
+    // --- Página inicial ---
+    if (t.dataset.h) {
+      const v = t.type === "checkbox" ? t.checked : t.value.trim();
+      setPath(ensureHome(), t.dataset.h, v);
+      // campos de texto: guarda sem redesenhar (para não perder o cursor ao passar para o campo seguinte)
+      if (t.tagName === "INPUT" && (t.type === "text" || t.type === "")) return save("Guardado");
+      return homeSave();
+    }
+    if (t.dataset.hfile) {
+      const file = t.files[0]; if (!file) return;
+      compress(file).then(data => { setPath(ensureHome(), t.dataset.hfile, data); homeSave("Foto carregada"); });
+    }
+    if (t.dataset.hnov) {
+      const H = ensureHome(), id = t.dataset.hnov;
+      H.novidades = t.checked ? [...H.novidades.filter(x => x !== id), id] : H.novidades.filter(x => x !== id);
+      return homeSave(t.checked ? "Juntado às Novidades" : "Tirado das Novidades");
+    }
   });
   document.addEventListener("input", (e) => { if (e.target.id === "q") { state.q = e.target.value; drawRows(); } });
   $("#overlay").addEventListener("click", closePanel);

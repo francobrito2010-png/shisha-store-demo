@@ -104,7 +104,7 @@ svg:not(.art):not(.logo__svg) { width: 22px; height: 22px; fill: none; stroke: c
 
 /* ---------- Hero: slider + publicidade lateral ---------- */
 .hero { display: grid; gap: 16px; margin-top: 16px; }
-@media (min-width: 1024px) { .hero { grid-template-columns: 2.1fr 1fr; margin-top: 20px; } }
+@media (min-width: 1024px) { .hero { grid-template-columns: 2.1fr 1fr; margin-top: 20px; } .hero--solo { grid-template-columns: 1fr; } }
 .slider { position: relative; border-radius: 20px; overflow: hidden; min-height: 400px; isolation: isolate; }
 @media (min-width: 768px) { .slider { min-height: 480px; } }
 .slide { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr; align-items: center; padding: 36px 28px 64px; color: #fff; opacity: 0; transition: opacity .7s ease; pointer-events: none; }
@@ -212,7 +212,7 @@ svg:not(.art):not(.logo__svg) { width: 22px; height: 22px; fill: none; stroke: c
 
 /* ---------- Faixa em movimento ---------- */
 .marquee { background: var(--ink); color: #fff; overflow: hidden; margin-top: 28px; padding: 13px 0; }
-.marquee__track { display: flex; gap: 22px; width: max-content; animation: marquee 38s linear infinite; font-size: 13px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.marquee__track { display: flex; gap: 22px; width: max-content; animation: marquee var(--dur, 38s) linear infinite; font-size: 13px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .marquee i { color: var(--gold); font-style: normal; }
 @keyframes marquee { to { transform: translateX(-33.333%); } }
 @media (prefers-reduced-motion: reduce) { .marquee__track { animation: none; } }

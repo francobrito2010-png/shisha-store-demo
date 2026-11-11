@@ -91,6 +91,8 @@ window.SSDB = (() => {
     } catch (e) { console.warn("Não foi possível registar a encomenda.", e); }
   }
 
+  // No painel em modo demonstração, as alterações do navegador carregam já (o modo real lê da base de dados)
+  if (window.SS_ADMIN && !live) applyLocal();
   const ready = window.SS_ADMIN ? Promise.resolve() : load().then(hideHidden);
   return { live, config: C, LISTS, applyRows, clean, placeOrder, ready };
 })();

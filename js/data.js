@@ -160,3 +160,46 @@ const PACKS = [
   { id: "pack-75", nome: "Pack Iniciante", preco: 75, cor: "#b08d57", inclui: ["Shisha", "Mangueira", "Pinça", "Cabeçote de silicone", "Forno", "Carvão", "Boquilha 3D", "100g de sabor"] },
   { id: "pack-85", nome: "Pack Completo", preco: 85, cor: "#1c1c1c", inclui: ["Shisha (modelo superior)", "Mangueira", "Pinça", "Cabeçote de silicone", "Forno", "Carvão", "Boquilha 3D", "100g de sabor"], destaque: true },
 ];
+
+/* ---------- PÁGINA INICIAL (editável no painel → Página inicial) ----------
+   link: "p/<id do produto>" ou uma secção: "shishas", "essencias", "carvao", "acessorios", "packs", "loja"
+   modo: "cheio" = foto a ocupar tudo · "lado" = foto ao lado do texto */
+const HOME_DEFAULT = {
+  slides: [
+    { ativo: true, kicker: "Nova chegada", titulo: "WOOKAH", sub: "Madeira artesanal · 60 cm. Já disponível na loja.", cta: "Ver shisha", link: "p/wookah-60", img: "img/wookah-60.jpg", modo: "lado", cor: "#6b4423" },
+    { ativo: true, kicker: "Representante oficial", titulo: "ADALYA", sub: "Os sabores mais pedidos de Portugal: Love 66, Lady Killer, Hawaii…", cta: "Ver essências", link: "essencias", img: stock("tabaco"), modo: "cheio", cor: "#1a0a10" },
+    { ativo: true, kicker: "Carvão de coco", titulo: "COCO DALYA", sub: "Queima limpa e longa duração. Caixa de 1kg com 64 peças.", cta: "Ver carvão", link: "carvao", img: stock("carvaoFumo"), modo: "cheio", cor: "#0b0b0b" },
+    { ativo: true, kicker: "Tudo incluído", titulo: "PACKS DESDE 75€", sub: "Shisha, mangueira, forno, carvão, boquilha 3D e 100g de sabor.", cta: "Ver packs", link: "packs", img: "img/pack-85.jpg", modo: "lado", cor: "#262626" },
+    { ativo: true, kicker: "Amy Deluxe", titulo: "CARBONO", sub: "Acabamento em fibra de carbono · 45 cm · 80€", cta: "Comprar", link: "p/amy-carbono-45", img: "img/amy-carbono-45.jpg", modo: "lado", cor: "#1e3a8a" },
+  ],
+  promos: [
+    { ativo: true, kicker: "Novo preço", titulo: "Kaloud a 10€", cta: "Comprar →", link: "p/acc-kaloud", img: stock("cabecote", 900), modo: "cheio", cor: "#0b0b0b" },
+    { ativo: true, kicker: "Cristal", titulo: "Crystalia desde 60€", cta: "Ver modelos →", link: "shishas", img: "img/crystalia-3s-50.jpg", modo: "lado", cor: "#6d28d9" },
+  ],
+  faixa: {
+    ativo: true, velocidade: "normal",
+    itens: ["Novidades todas as semanas", "Levantamento na loja", "Pagamento seguro", "Atendimento ao cliente", "Representante Adalya", "Melhor preço do mercado"],
+  },
+  categorias: [
+    { cat: "shishas", titulo: "Shishas", img: "img/amy-55-50.jpg", cor: "#f4ede4" },
+    { cat: "essencias", titulo: "Essências", img: stock("tabaco2", 600), cor: "#fde2e4" },
+    { cat: "carvao", titulo: "Carvão", img: stock("brasas", 600), cor: "#e7e5e4" },
+    { cat: "acessorios", titulo: "Acessórios", img: "img/acc-paravento.jpg", cor: "#e0f2fe" },
+    { cat: "packs", titulo: "Packs", img: "img/pack-75.jpg", cor: "#ede9fe" },
+  ],
+  novidades: ["wookah-60", "adalya-ath-45", "amy-carbono-45", "crystalia-3s-50", "boss-50", "toro-25", "paname-35", "stars-55"],
+  ambiente: {
+    kicker: "A tua sessão, ao teu estilo", titulo: "Monta a sessão perfeita",
+    texto: "Shisha, sabor, carvão e acessórios — tudo num só lugar, com aconselhamento de quem percebe.",
+    cta: "Ver packs", link: "packs", img: stock("loungeNeon", 1400),
+    tiles: [
+      { titulo: "Sabores Adalya", sub: "Descobrir →", link: "essencias", img: stock("preparar", 800) },
+      { titulo: "Shishas premium", sub: "Ver modelos →", link: "shishas", img: stock("loungeVermelho", 800) },
+    ],
+  },
+  secoes: [
+    { id: "categorias", ativo: true }, { id: "garantias", ativo: true }, { id: "novidades", ativo: true },
+    { id: "essencias", ativo: true }, { id: "packs", ativo: true }, { id: "ambiente", ativo: true },
+    { id: "marcas", ativo: true }, { id: "loja", ativo: true },
+  ],
+};
