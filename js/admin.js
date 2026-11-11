@@ -69,8 +69,10 @@
     for (const p of allProducts().map(x => x.p)) {
       if (!p.img || !p.img.startsWith("data:")) continue;
       const blob = await (await fetch(p.img)).blob();
-      const path = `${p.id}-${Date.now()}.jpg`;
-      const up = await sb.storage.from("produtos").upload(path, blob, { contentType: "image/jpeg", upsert: true });
+      const ext = blob.type === "image/webp" ? "webp" : "jpg";
+      const path = `${p.id}-${Date.now()}.${ext}`;
+      // nome único + cache de 1 ano: o navegador e a CDN guardam a foto e a loja abre mais rápido
+      const up = await sb.storage.from("produtos").upload(path, blob, { contentType: blob.type || "image/jpeg", cacheControl: "31536000", upsert: false });
       if (up.error) throw up.error;
       p.img = sb.storage.from("produtos").getPublicUrl(path).data.publicUrl;
     }
@@ -514,9 +516,12 @@
     return new Promise((res) => {
       const r = new FileReader();
       r.onload = () => { const im = new Image(); im.onload = () => {
-        const s = Math.min(1, 800 / Math.max(im.width, im.height)); const c = document.createElement("canvas");
-        c.width = Math.round(im.width * s); c.height = Math.round(im.height * s); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
-        res(c.toDataURL("image/jpeg", .8)); }; im.src = r.result; };
+        // máx. 900px e formato WebP (≈60–120 KB por foto); JPEG se o navegador não suportar WebP
+        const s = Math.min(1, 900 / Math.max(im.width, im.height)); const c = document.createElement("canvas");
+        c.width = Math.round(im.width * s); c.height = Math.round(im.height * s);
+        const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(im, 0, 0, c.width, c.height);
+        const webp = c.toDataURL("image/webp", .78);
+        res(webp.startsWith("data:image/webp") ? webp : c.toDataURL("image/jpeg", .8)); }; im.src = r.result; };
       r.readAsDataURL(file);
     });
   }

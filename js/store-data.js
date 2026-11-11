@@ -46,15 +46,27 @@ window.SSDB = (() => {
 
   async function load() {
     if (!live) return applyLocal();
-    try {
+    // Velocidade: usa a última cópia do catálogo guardada no telemóvel do cliente
+    // se a internet estiver lenta (mais de 2,5 s), e atualiza-a em segundo plano.
+    let cache = null;
+    try { cache = JSON.parse(localStorage.getItem("ss_cache")); } catch {}
+    const useData = (d) => { if (d.rows?.length) applyRows(d.rows); if (d.store) Object.assign(STORE, clean(d.store)); };
+    const fresh = (async () => {
       const [cat, set] = await Promise.all([
         rest("catalog?select=id,cat,pos,data&order=pos.asc"),
         rest("settings?select=store&id=eq.1"),
       ]);
-      if (cat.ok) { const rows = await cat.json(); if (rows.length) applyRows(rows); }
-      if (set.ok) { const s = await set.json(); if (s[0]?.store) Object.assign(STORE, clean(s[0].store)); }
+      if (!cat.ok) throw new Error("catalog " + cat.status);
+      const d = { t: Date.now(), rows: await cat.json(), store: set.ok ? (await set.json())[0]?.store : null };
+      try { localStorage.setItem("ss_cache", JSON.stringify(d)); } catch {}
+      return d;
+    })();
+    try {
+      const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error("lento")), cache ? 2500 : 8000));
+      useData(await Promise.race([fresh, timeout]));
     } catch (e) {
-      console.warn("Sem ligação à base de dados — a usar o catálogo guardado no site.", e);
+      if (cache) useData(cache);
+      else console.warn("Sem ligação à base de dados — a usar o catálogo guardado no site.", e);
     }
   }
 
