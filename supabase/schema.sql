@@ -31,6 +31,14 @@ create table if not exists public.orders (
   exemplo     boolean not null default false
 );
 
+-- ---------- Permissões mínimas (o projeto não expõe tabelas automaticamente) ----------
+grant usage on schema public to anon, authenticated;
+grant select on public.catalog, public.settings to anon, authenticated;
+grant insert, update, delete on public.catalog, public.settings to authenticated;
+grant insert on public.orders to anon, authenticated;
+grant select, update, delete on public.orders to authenticated;
+grant usage, select on all sequences in schema public to anon, authenticated;
+
 -- ---------- Segurança: Row Level Security ----------
 alter table public.catalog  enable row level security;
 alter table public.settings enable row level security;
